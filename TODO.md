@@ -45,7 +45,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 - [x] `tui/styles/styles.go` — all Lipgloss color/border definitions
 - [x] `internal/keymap/keymap.go` — vim keybinding definitions
-- [ ] `tui/layout.go` — pane size calculation from terminal dimensions
+- [x] `tui/layout.go` — pane size calculation from terminal dimensions
 - [ ] `tui/app.go` — root AppModel, three-pane layout renders with static data
 
 ## Phase 4 — Sidebar
@@ -90,7 +90,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Testing — Phase 3 (Layout)
 
-- [ ] `layout_test.go` — sidebar/chat/input dimensions, minimum terminal size
+- [x] `layout_test.go` — sidebar/chat/input dimensions, minimum terminal size
 
 ## Testing — Phase 4 (Sidebar)
 
