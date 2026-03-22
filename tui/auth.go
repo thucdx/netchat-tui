@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/thucdx/netchat-tui/api"
+	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
 // authState enumerates the stages of the auth screen.
@@ -21,23 +21,6 @@ const (
 	stateInput      authState = iota // waiting for the user to paste a token
 	stateValidating                  // token submitted; HTTP call in flight
 	stateError                       // previous attempt failed; user can retry
-)
-
-// Styles ─────────────────────────────────────────────────────────────────────
-
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("205"))
-
-	subtleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
-	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196"))
-
-	labelStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39"))
 )
 
 // AuthModel ───────────────────────────────────────────────────────────────────
@@ -63,7 +46,7 @@ func NewAuthModel(baseURL string) AuthModel {
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	sp.Style = styles.SpinnerStyle
 
 	return AuthModel{
 		state:   stateInput,
@@ -140,15 +123,15 @@ func (m AuthModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m AuthModel) View() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("netchat-tui"))
+	b.WriteString(styles.TitleStyle.Render("netchat-tui"))
 	b.WriteString("\n\n")
 
-	b.WriteString(subtleStyle.Render("Open https://netchat.viettel.vn in your browser, log in via SSO,"))
+	b.WriteString(styles.SubtleStyle.Render("Open https://netchat.viettel.vn in your browser, log in via SSO,"))
 	b.WriteString("\n")
-	b.WriteString(subtleStyle.Render("then open DevTools → Application → Cookies → copy MMAUTHTOKEN value."))
+	b.WriteString(styles.SubtleStyle.Render("then open DevTools → Application → Cookies → copy MMAUTHTOKEN value."))
 	b.WriteString("\n\n")
 
-	b.WriteString(labelStyle.Render("Token: "))
+	b.WriteString(styles.MessageText.Render("Token: "))
 	b.WriteString(m.input.View())
 	b.WriteString("\n\n")
 
@@ -157,13 +140,13 @@ func (m AuthModel) View() string {
 		b.WriteString(m.spinner.View())
 		b.WriteString(" Validating token…")
 	case stateError:
-		b.WriteString(errorStyle.Render("Error: " + m.errMsg))
+		b.WriteString(styles.ErrorStyle.Render("Error: " + m.errMsg))
 		b.WriteString("\n")
-		b.WriteString(subtleStyle.Render("Press Enter to retry."))
+		b.WriteString(styles.SubtleStyle.Render("Press Enter to retry."))
 	}
 
 	b.WriteString("\n\n")
-	b.WriteString(subtleStyle.Render("Press Ctrl+C to quit"))
+	b.WriteString(styles.SubtleStyle.Render("Press Ctrl+C to quit"))
 
 	return b.String()
 }
