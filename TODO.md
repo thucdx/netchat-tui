@@ -50,8 +50,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase 4 — Sidebar
 
-- [ ] `tui/sidebar/model.go` — ChannelItem, cursor, virtual scroll, ChannelSelectedMsg
-- [ ] `tui/sidebar/view.go` — icons, unread badges, muted style, section headers
+- [x] `tui/sidebar/model.go` — ChannelItem, cursor, virtual scroll, ChannelSelectedMsg
+- [x] `tui/sidebar/view.go` — icons, unread badges, muted style, section headers
 
 ## Phase 5 — Chat Viewport
 
@@ -94,8 +94,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Testing — Phase 4 (Sidebar)
 
-- [ ] `sidebar_model_test.go` — j/k cursor, gg/G jump, virtual scroll, ChannelSelectedMsg, DM name resolution
-- [ ] `sidebar_view_test.go` — muted icon, unread badge styles, rendered width within bounds
+- [x] `sidebar_model_test.go` — j/k cursor, gg/G jump, virtual scroll, ChannelSelectedMsg, DM name resolution
+- [x] `sidebar_view_test.go` — muted icon, unread badge styles, rendered width within bounds
 
 ## Testing — Phase 5 (Chat Viewport)
 
