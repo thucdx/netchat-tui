@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 )
 
+// BaseURL is the netchat server address.
+const BaseURL = "https://netchat.viettel.vn"
+
 // AuthConfig holds the credentials persisted to disk.
 // Token is the raw MMAUTHTOKEN value; UserID is the Mattermost user ID.
 type AuthConfig struct {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,9 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrUnauthorized is returned when the server responds with HTTP 401.
+var ErrUnauthorized = errors.New("api: unauthorized (401)")
 
 // Client is an HTTP client for the Mattermost-compatible API.
 type Client struct {
@@ -66,6 +70,9 @@ func (c *Client) do(method, path string, body io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("api: reading response body for %s %s: %w", method, path, err)
 	}
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("%w", ErrUnauthorized)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("api: %s %s returned status %d", method, path, resp.StatusCode)
 	}
