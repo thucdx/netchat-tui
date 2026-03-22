@@ -149,10 +149,26 @@ A phase only advances when all four agents have signed off. Unresolved disagreem
 **Decision**: Use four specialized agents (Coder, Tester, Reviewer, Security) with a defined communication and escalation protocol. Unresolved disagreements escalate to the user. All decisions are documented here.
 **Reason**: Separation of concerns — each agent focuses on one dimension of quality without stepping on others.
 
+### 2026-03-23 USER — Integration test target channels
+**Context**: Integration tests that call the real netchat API must not accidentally post to real work channels.
+**Decision**: DM tests may only target user `thucdx`. Group/channel tests may only post to "PT sieu UD netchat". All other channels are off-limits for automated test messages.
+**Reason**: Prevent test noise from appearing in real team conversations.
+
 ### 2026-03-22 USER — Authentication approach
 **Context**: SSO login requires a browser redirect that cannot be automated in a TUI.
 **Decision**: User completes SSO login in browser, copies `MMAUTHTOKEN` cookie value, pastes into TUI once. Token stored in `~/.config/netchat-tui/auth.json`.
 **Reason**: Reverse-engineering the Viettel SSO portal is out of scope and fragile.
+
+---
+
+## Integration Test Constraints
+
+When running integration tests that make **real API calls** to netchat.viettel.vn:
+
+- **Direct Messages**: only send test messages to `thucdx` (yourself)
+- **Group/Channel messages**: only allowed to post to the channel named **"PT sieu UD netchat"**
+- **All other channels and groups are strictly off-limits** for any test-generated messages
+- Unit tests (using `httptest.NewServer`) are unaffected — they never touch the real server
 
 ---
 
