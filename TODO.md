@@ -27,7 +27,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase 1 — Foundation and Auth
 
-- [ ] Initialize Go module and add dependencies (bubbletea, lipgloss, bubbles, gorilla/websocket)
+- [x] Initialize Go module and add dependencies (bubbletea, lipgloss, bubbles, gorilla/websocket)
 - [ ] `config/config.go` — AuthConfig struct, Load() / Save() to ~/.config/netchat-tui/auth.json
 - [ ] `api/client.go` — HTTP client wrapper with Bearer token injection
 - [ ] `tui/auth.go` — token paste screen, validate via GET /api/v4/users/me, save on success

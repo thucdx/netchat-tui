@@ -89,6 +89,16 @@ Every decision made by agents OR by the user during escalation must be appended 
 
 ---
 
+## Commit Rule
+
+After **every completed TODO item**, the Coder agent must create a git commit:
+- Stage only the files changed for that item
+- Commit message format: `<type>(<scope>): <short description>` (e.g. `feat(config): add AuthConfig load/save`)
+- Never batch multiple TODO items into one commit
+- The Orchestrator updates `TODO.md` (`[ ]` → `[x]`) and includes it in the same commit
+
+---
+
 ## Per-Phase Checklist (gate before moving to next phase)
 
 A phase is complete only when ALL of the following are true:
