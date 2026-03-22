@@ -46,7 +46,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 - [x] `tui/styles/styles.go` — all Lipgloss color/border definitions
 - [x] `internal/keymap/keymap.go` — vim keybinding definitions
 - [x] `tui/layout.go` — pane size calculation from terminal dimensions
-- [ ] `tui/app.go` — root AppModel, three-pane layout renders with static data
+- [x] `tui/app.go` — root AppModel, three-pane layout renders with static data
 
 ## Phase 4 — Sidebar
 

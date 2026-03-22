@@ -64,6 +64,10 @@ func main() {
 		}
 	}
 
-	// Phase 3 will replace this with the real AppModel.
-	fmt.Printf("Authenticated as %s. Main app coming soon...\n", cfg.UserID)
+	// Launch the main chat UI.
+	p := tea.NewProgram(tui.NewAppModel(nil), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: app encountered an error: %v\n", err)
+		os.Exit(1)
+	}
 }
