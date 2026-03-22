@@ -35,7 +35,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase 2 — API Layer
 
-- [ ] `api/models.go` — User, Team, Channel, ChannelMember, Post, PostList structs
+- [x] `api/models.go` — User, Team, Channel, ChannelMember, Post, PostList structs
 - [ ] `api/teams.go` — GetTeamsForUser()
 - [ ] `api/channels.go` — GetChannelsForUser(), GetChannelMembersForUser(), GetPreferences(), MarkChannelRead()
 - [ ] `api/posts.go` — GetPostsForChannel(), CreatePost(), GetPostsSince()
@@ -81,7 +81,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Testing — Phase 2 (API Layer)
 
-- [ ] `models_test.go` — JSON unmarshal for Channel types, double-unmarshal for WS posted event
+- [x] `models_test.go` — JSON unmarshal for Channel types, double-unmarshal for WS posted event
 - [ ] `teams_test.go` (integration) — GetTeamsForUser returns at least one team
 - [ ] `channels_test.go` (integration) — GetChannelsForUser, GetChannelMembersForUser
 - [ ] `channels_test.go` — mute detection logic (mark_unread == "mention")
