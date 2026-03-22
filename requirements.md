@@ -83,14 +83,26 @@ A TUI (Terminal User Interface) chat client for netchat.viettel.vn, designed to 
 
 ## Navigation (Vim-like)
 
-- `j` / `k` — move up/down in channel list
+**Sidebar (channel list):**
+- `j` / `k` or arrow keys — move up/down in channel list
 - `Enter` — open selected channel
-- `gg` / `G` — jump to top/bottom of channel list
-- `Ctrl+u` / `Ctrl+d` — scroll chat up/down half page
-- `i` or `a` — focus message input
+
+**Chat window scrolling:**
+- `k` / `↑` — scroll up one line
+- `j` / `↓` — scroll down one line
+- `Ctrl+u` — scroll up half page
+- `Ctrl+d` — scroll down half page
+- `Ctrl+b` — page up
+- `Ctrl+f` — page down
+- `G` — jump to bottom (latest messages)
+- No jump-to-top: jumping to the very top of chat would skip too many messages
+
+**Global:**
+- `i` or `a` — focus message input (only when sidebar or chat is focused)
 - `Esc` — return focus to channel list from input
-- `q` — quit app (with confirmation)
+- `q` — quit app (only when sidebar is focused, not during typing)
 - `Tab` — switch focus between panels
+- `?` — show keybinding help
 
 ---
 
@@ -148,6 +160,11 @@ A phase only advances when all four agents have signed off. Unresolved disagreem
 **Context**: How to structure the development process for quality assurance.
 **Decision**: Use four specialized agents (Coder, Tester, Reviewer, Security) with a defined communication and escalation protocol. Unresolved disagreements escalate to the user. All decisions are documented here.
 **Reason**: Separation of concerns — each agent focuses on one dimension of quality without stepping on others.
+
+### 2026-03-23 USER — Remove jump-to-top, keep vim scroll bindings
+**Context**: Reviewer flagged that `gg` (jump to top) requires a state machine and jumping to top of chat skips too many messages.
+**Decision**: Remove jump-to-top entirely. Chat scrolls with `k/j`, `Ctrl+U/D`, `Ctrl+B/F`. `G` jumps to bottom (latest messages) only. `q` to quit only fires when sidebar is focused, not during text input.
+**Reason**: In a chat window, jumping to the very top is impractical. Vim-style incremental scroll is sufficient.
 
 ### 2026-03-23 USER — Integration test target channels
 **Context**: Integration tests that call the real netchat API must not accidentally post to real work channels.
