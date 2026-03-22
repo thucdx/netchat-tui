@@ -31,7 +31,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 - [x] `config/config.go` — AuthConfig struct, Load() / Save() to ~/.config/netchat-tui/auth.json
 - [x] `api/client.go` — HTTP client wrapper with Bearer token injection
 - [x] `tui/auth.go` — token paste screen, validate via GET /api/v4/users/me, save on success
-- [ ] `main.go` — entry point: load config → auth screen if no token → launch main app
+- [x] `main.go` — entry point: load config → auth screen if no token → launch main app
 
 ## Phase 2 — API Layer
 
