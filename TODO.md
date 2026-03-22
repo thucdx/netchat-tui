@@ -36,7 +36,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 ## Phase 2 — API Layer
 
 - [x] `api/models.go` — User, Team, Channel, ChannelMember, Post, PostList structs
-- [ ] `api/teams.go` — GetTeamsForUser()
+- [x] `api/teams.go` — GetTeamsForUser()
 - [ ] `api/channels.go` — GetChannelsForUser(), GetChannelMembersForUser(), GetPreferences(), MarkChannelRead()
 - [ ] `api/posts.go` — GetPostsForChannel(), CreatePost(), GetPostsSince()
 - [ ] `api/websocket.go` — connect, auth challenge, event parsing, reconnect loop
