@@ -38,7 +38,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 - [x] `api/models.go` — User, Team, Channel, ChannelMember, Post, PostList structs
 - [x] `api/teams.go` — GetTeamsForUser()
 - [x] `api/channels.go` — GetChannelsForUser(), GetChannelMembersForUser(), GetPreferences(), MarkChannelRead()
-- [ ] `api/posts.go` — GetPostsForChannel(), CreatePost(), GetPostsSince()
+- [x] `api/posts.go` — GetPostsForChannel(), CreatePost(), GetPostsSince()
 - [ ] `api/websocket.go` — connect, auth challenge, event parsing, reconnect loop
 
 ## Phase 3 — Core TUI Shell
@@ -85,7 +85,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 - [ ] `teams_test.go` (integration) — GetTeamsForUser returns at least one team
 - [ ] `channels_test.go` (integration) — GetChannelsForUser, GetChannelMembersForUser
 - [ ] `channels_test.go` — mute detection logic (mark_unread == "mention")
-- [ ] `posts_test.go` (integration) — GetPostsForChannel order, CreatePost
+- [x] `posts_test.go` (integration) — GetPostsForChannel order, CreatePost
 - [ ] `websocket_test.go` — auth challenge JSON, posted event parse, unknown event no panic
 
 ## Testing — Phase 3 (Layout)
