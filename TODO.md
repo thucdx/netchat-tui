@@ -29,7 +29,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 - [x] Initialize Go module and add dependencies (bubbletea, lipgloss, bubbles, gorilla/websocket)
 - [x] `config/config.go` — AuthConfig struct, Load() / Save() to ~/.config/netchat-tui/auth.json
-- [ ] `api/client.go` — HTTP client wrapper with Bearer token injection
+- [x] `api/client.go` — HTTP client wrapper with Bearer token injection
 - [ ] `tui/auth.go` — token paste screen, validate via GET /api/v4/users/me, save on success
 - [ ] `main.go` — entry point: load config → auth screen if no token → launch main app
 
@@ -76,7 +76,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 ## Testing — Phase 1 (Auth & Config)
 
 - [x] `config_test.go` — Save/Load roundtrip, missing file returns empty config
-- [ ] `client_test.go` — Bearer header injection, non-2xx returns error
+- [x] `client_test.go` — Bearer header injection, non-2xx returns error
 - [ ] `auth_test.go` (integration) — valid token passes, invalid token shows error
 
 ## Testing — Phase 2 (API Layer)
