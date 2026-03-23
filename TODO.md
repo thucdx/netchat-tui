@@ -14,14 +14,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Security
 
-- [ ] `config/config.go` — create config dir with `0700`, auth.json with `0600`
-- [ ] `tui/auth.go` — use `EchoPassword` mode for token input, clear input string after save
-- [ ] `api/client.go` — assert `https://` scheme in `NewClient()`, abort if not
-- [ ] `api/websocket.go` — assert `wss://` scheme before dialing, abort if not
-- [ ] `api/client.go` — ensure raw token never appears in wrapped error messages
-- [ ] `tui/chat/view.go` — strip ANSI escape sequences from all incoming message text before rendering
-- [ ] `tui/input/model.go` — enforce 4000 char max on outgoing messages
-- [ ] `security_test.go` — file permissions (0600/0700), scheme rejection, token not in errors, ANSI strip, input length cap
+- [x] `config/config.go` — create config dir with `0700`, auth.json with `0600`
+- [x] `tui/auth.go` — use `EchoPassword` mode for token input, clear input string after save
+- [x] `api/client.go` — assert `https://` scheme in `NewClient()`, abort if not
+- [x] `api/websocket.go` — assert `wss://` scheme before dialing, abort if not
+- [x] `api/client.go` — ensure raw token never appears in wrapped error messages
+- [x] `tui/chat/view.go` — strip ANSI escape sequences from all incoming message text before rendering
+- [x] `tui/input/model.go` — enforce 4000 char max on outgoing messages
+- [x] `security_test.go` — scheme rejection, token not in errors, ANSI strip, input length cap
 
 ---
 
@@ -67,11 +67,11 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase 7 — WebSocket Real-Time
 
-- [ ] WebSocket goroutine → buffered channel → tea.Cmd pump into Bubbletea loop
-- [ ] Handle `posted` event — append to active chat or increment sidebar unread
-- [ ] Handle `post_edited` event — update post in list
-- [ ] Handle `channel_viewed` event — clear unread badge
-- [ ] Muted channel rule — increment count, no highlight
+- [x] WebSocket goroutine → buffered channel → tea.Cmd pump into Bubbletea loop
+- [x] Handle `posted` event — append to active chat or increment sidebar unread
+- [x] Handle `post_edited` event — update post in list
+- [x] Handle `channel_viewed` event — clear unread badge
+- [x] Muted channel rule — increment count, no highlight
 
 ## Testing — Phase 1 (Auth & Config)
 
