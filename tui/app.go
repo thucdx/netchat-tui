@@ -103,6 +103,13 @@ func NewAppModel(apiClient *api.Client) AppModel {
 	}
 }
 
+// WithSidebarLimit applies a custom channel list limit to the model.
+// Call this after NewAppModel before starting the Bubbletea program.
+func (m AppModel) WithSidebarLimit(n int) AppModel {
+	m.sidebar.SetLimit(n)
+	return m
+}
+
 // Init implements tea.Model.
 func (m AppModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{

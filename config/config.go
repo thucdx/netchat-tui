@@ -11,26 +11,26 @@ import (
 // BaseURL is the netchat server address.
 const BaseURL = "https://netchat.viettel.vn"
 
-// AuthConfig holds the credentials persisted to disk.
-// Token is the raw MMAUTHTOKEN value; UserID is the Mattermost user ID.
-type AuthConfig struct {
-	Token  string `json:"token"`
-	UserID string `json:"user_id"`
+// Config holds all user settings persisted to disk.
+type Config struct {
+	Token        string `json:"token"`
+	UserID       string `json:"user_id"`
+	SidebarLimit int    `json:"sidebar_limit,omitempty"` // max channels shown; 0 means use default (50)
 }
 
-// configPath returns the absolute path to the auth config file:
-// $XDG_CONFIG_HOME/netchat-tui/auth.json  (falls back to ~/.config on most systems).
+// configPath returns the absolute path to the config file:
+// $XDG_CONFIG_HOME/netchat-tui/config.json (falls back to ~/.config on most systems).
 func configPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to locate user config directory: %w", err)
 	}
-	return filepath.Join(dir, "netchat-tui", "auth.json"), nil
+	return filepath.Join(dir, "netchat-tui", "config.json"), nil
 }
 
-// Load reads the auth config from disk.
-// If the file does not exist, an empty AuthConfig is returned with no error.
-func Load() (*AuthConfig, error) {
+// Load reads the config from disk.
+// If the file does not exist, an empty Config is returned with no error.
+func Load() (*Config, error) {
 	path, err := configPath()
 	if err != nil {
 		return nil, err
@@ -39,12 +39,12 @@ func Load() (*AuthConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &AuthConfig{}, nil
+			return &Config{}, nil
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var cfg AuthConfig
+	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
@@ -55,7 +55,7 @@ func Load() (*AuthConfig, error) {
 // Save writes cfg to disk as pretty-printed JSON.
 // The config directory is created with permissions 0700 if it does not exist.
 // The file is written with permissions 0600 (owner read/write only).
-func Save(cfg *AuthConfig) error {
+func Save(cfg *Config) error {
 	path, err := configPath()
 	if err != nil {
 		return err

@@ -31,7 +31,7 @@ On first run you will see a token prompt.
    (Or open DevTools → Network, copy the `Authorization: Bearer <value>` from any request.)
 3. Paste the token into the prompt and press **Enter**.
 
-The token is saved to `~/.config/netchat-tui/auth.json` (mode `0600`) and reused on subsequent launches. To switch accounts, delete this file and restart.
+The token is saved to `~/.config/netchat-tui/config.json` (mode `0600`) and reused on subsequent launches. To switch accounts, delete this file and restart.
 
 ---
 
@@ -105,6 +105,26 @@ Scrolling to the top automatically loads older messages.
 | `q` (sidebar focused) | Quit |
 | `Ctrl+C` | Quit from anywhere |
 | `?` | Show keybinding help |
+
+---
+
+## Configuration
+
+Config is stored at `~/.config/netchat-tui/config.json` (created automatically on first launch).
+
+```json
+{
+  "token": "your-mmauthtoken",
+  "user_id": "your-user-id",
+  "sidebar_limit": 50
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `token` | — | Bearer token (set via the auth prompt) |
+| `user_id` | — | Mattermost user ID (set automatically) |
+| `sidebar_limit` | `50` | Max channels shown in the sidebar |
 
 ---
 

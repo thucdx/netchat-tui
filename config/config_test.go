@@ -69,13 +69,13 @@ func expectedAuthJSONPath(t *testing.T, tmpDir string) string {
 // Tests
 // ----------------------------------------------------------------------------
 
-// TestSaveAndLoad verifies that saving an AuthConfig and loading it back
+// TestSaveAndLoad verifies that saving an Config and loading it back
 // produces the identical Token and UserID values.
 func TestSaveAndLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 	redirectConfigHome(t, tmpDir)
 
-	want := &AuthConfig{
+	want := &Config{
 		Token:  "test-token-abc123",
 		UserID: "user-xyz789",
 	}
@@ -97,7 +97,7 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 }
 
-// TestLoadMissingFile verifies that Load() returns an empty AuthConfig (not an
+// TestLoadMissingFile verifies that Load() returns an empty Config (not an
 // error) when no config file exists yet.
 func TestLoadMissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -109,7 +109,7 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Fatalf("Load() returned unexpected error for missing file: %v", err)
 	}
 	if cfg == nil {
-		t.Fatal("Load() returned nil AuthConfig for missing file")
+		t.Fatal("Load() returned nil Config for missing file")
 	}
 	if cfg.Token != "" {
 		t.Errorf("expected empty Token, got %q", cfg.Token)
@@ -129,7 +129,7 @@ func TestFilePermissions(t *testing.T) {
 	tmpDir := t.TempDir()
 	redirectConfigHome(t, tmpDir)
 
-	cfg := &AuthConfig{Token: "tok", UserID: "uid"}
+	cfg := &Config{Token: "tok", UserID: "uid"}
 	if err := Save(cfg); err != nil {
 		t.Fatalf("Save() failed: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestDirPermissions(t *testing.T) {
 	tmpDir := t.TempDir()
 	redirectConfigHome(t, tmpDir)
 
-	cfg := &AuthConfig{Token: "tok", UserID: "uid"}
+	cfg := &Config{Token: "tok", UserID: "uid"}
 	if err := Save(cfg); err != nil {
 		t.Fatalf("Save() failed: %v", err)
 	}
