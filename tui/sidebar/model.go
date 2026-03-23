@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
-	"github.com/thucdx/netchat-tui/tui"
+	"github.com/thucdx/netchat-tui/internal/messages"
 )
 
 // ansiEscape matches ANSI terminal escape sequences.
@@ -166,7 +166,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.items) > 0 && m.cursor >= 0 && m.cursor < len(m.items) {
 				m.selected = m.cursor
 				return m, func() tea.Msg {
-					return tui.ChannelSelectedMsg{ChannelID: m.items[m.cursor].Channel.ID}
+					return messages.ChannelSelectedMsg{ChannelID: m.items[m.cursor].Channel.ID}
 				}
 			}
 		}

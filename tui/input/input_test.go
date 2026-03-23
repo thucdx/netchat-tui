@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/thucdx/netchat-tui/internal/keymap"
-	tui "github.com/thucdx/netchat-tui/tui"
+	"github.com/thucdx/netchat-tui/internal/messages"
 )
 
 func newTestModel(channelID string) Model {
@@ -49,7 +49,7 @@ func TestEnterSendsAndClearsTextarea(t *testing.T) {
 
 	// cmd must emit a SendMessageMsg
 	msg := collectMsg(cmd)
-	sendMsg, ok := msg.(tui.SendMessageMsg)
+	sendMsg, ok := msg.(messages.SendMessageMsg)
 	if !ok {
 		t.Fatalf("expected SendMessageMsg, got %T", msg)
 	}
@@ -79,7 +79,7 @@ func TestEnterWhileSendingIsDropped(t *testing.T) {
 	_, cmd := sendKey(m, tea.KeyEnter)
 	if cmd != nil {
 		msg := collectMsg(cmd)
-		if _, ok := msg.(tui.SendMessageMsg); ok {
+		if _, ok := msg.(messages.SendMessageMsg); ok {
 			t.Error("should not emit SendMessageMsg while sending is in-flight")
 		}
 	}
@@ -92,7 +92,7 @@ func TestEnterWithEmptyTextareaDoesNotSend(t *testing.T) {
 
 	if cmd != nil {
 		msg := collectMsg(cmd)
-		if _, ok := msg.(tui.SendMessageMsg); ok {
+		if _, ok := msg.(messages.SendMessageMsg); ok {
 			t.Error("should not emit SendMessageMsg for empty message")
 		}
 	}
@@ -105,7 +105,7 @@ func TestEnterWithWhitespaceOnlyDoesNotSend(t *testing.T) {
 	_, cmd := sendKey(m, tea.KeyEnter)
 	if cmd != nil {
 		msg := collectMsg(cmd)
-		if _, ok := msg.(tui.SendMessageMsg); ok {
+		if _, ok := msg.(messages.SendMessageMsg); ok {
 			t.Error("should not send whitespace-only message")
 		}
 	}
@@ -118,7 +118,7 @@ func TestEnterWithNoChannelIDDoesNotSend(t *testing.T) {
 	_, cmd := sendKey(m, tea.KeyEnter)
 	if cmd != nil {
 		msg := collectMsg(cmd)
-		if _, ok := msg.(tui.SendMessageMsg); ok {
+		if _, ok := msg.(messages.SendMessageMsg); ok {
 			t.Error("should not send when channelID is empty")
 		}
 	}
@@ -146,7 +146,7 @@ func TestShiftEnterInsertsNewline(t *testing.T) {
 	// No SendMessageMsg should be emitted.
 	if cmd2 != nil {
 		msg := collectMsg(cmd2)
-		if _, ok := msg.(tui.SendMessageMsg); ok {
+		if _, ok := msg.(messages.SendMessageMsg); ok {
 			t.Error("Alt+Enter (Shift+Enter equivalent) should NOT send a message")
 		}
 	}
@@ -207,7 +207,7 @@ func TestSendTrimsWhitespace(t *testing.T) {
 
 	_, cmd := sendKey(m, tea.KeyEnter)
 	msg := collectMsg(cmd)
-	sendMsg, ok := msg.(tui.SendMessageMsg)
+	sendMsg, ok := msg.(messages.SendMessageMsg)
 	if !ok {
 		t.Fatalf("expected SendMessageMsg, got %T", msg)
 	}

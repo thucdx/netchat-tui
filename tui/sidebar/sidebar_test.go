@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
-	"github.com/thucdx/netchat-tui/tui"
+	"github.com/thucdx/netchat-tui/internal/messages"
 	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
@@ -155,7 +155,7 @@ func TestEnterEmitsChannelSelectedMsg(t *testing.T) {
 	}
 
 	msg := cmd()
-	selectedMsg, ok := msg.(tui.ChannelSelectedMsg)
+	selectedMsg, ok := msg.(messages.ChannelSelectedMsg)
 	if !ok {
 		t.Fatalf("expected ChannelSelectedMsg, got %T", msg)
 	}

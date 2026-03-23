@@ -80,6 +80,11 @@ func (c *Client) do(method, path string, body io.Reader) ([]byte, error) {
 	return respBody, nil
 }
 
+// UserID returns the user ID associated with this client.
+func (c *Client) UserID() string {
+	return c.userID
+}
+
 // Get performs an HTTP GET request to the given path.
 func (c *Client) Get(path string) ([]byte, error) {
 	return c.do(http.MethodGet, path, nil)
