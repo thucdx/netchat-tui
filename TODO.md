@@ -2,13 +2,15 @@
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/escalated
 
-## Phase Gate Checklist (repeat for each phase before moving on)
+## Phase Gate Checklist — ALL PHASES COMPLETE
 
-- [ ] Coder: all phase tasks implemented
-- [ ] Tester: all phase tests pass (`go test ./...`)
-- [ ] Security: no High severity findings open
-- [ ] Reviewer: no blocking issues open
-- [ ] Orchestrator: TODO.md updated
+Phases 1–8 gated 2026-03-23.
+
+- [x] Coder: all phase tasks implemented (builder-ws + builder-ux)
+- [x] Tester: all phase tests pass — 31 tests, 9 packages, 0 failures (qa)
+- [x] Security: no High severity findings open (S2–S9 all resolved)
+- [x] Reviewer: no blocking issues open (Phase 7/8 gate approved by reviewer)
+- [x] Orchestrator: TODO.md updated
 
 ---
 
