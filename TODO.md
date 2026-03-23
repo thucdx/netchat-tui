@@ -108,20 +108,20 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Testing — Phase 7 (WebSocket)
 
-- [ ] `app_test.go` — posted to active/inactive/muted channel, channel_viewed clears badge
+- [x] `app_test.go` — posted to active/inactive/muted channel, channel_viewed clears badge
 - [ ] `websocket_test.go` — reconnect backoff caps at 30s
 
 ## Testing — Phase 8 (Polish)
 
 - [ ] `sidebar_model_test.go` — pagination triggers load-more on scroll to top
-- [ ] `app_test.go` — WindowSizeMsg propagates to all sub-models
+- [x] `app_test.go` — WindowSizeMsg propagates to all sub-models
 - [ ] `utils_test.go` — time formatting edge cases
 
 ## Phase 8 — Polish and Edge Cases
 
-- [ ] DM display name resolution — batch fetch via POST /api/v4/users/ids, cache
-- [ ] Mute detection — parse preferences, mark IsMuted per channel
-- [ ] Pagination — load more posts when viewport scrolled to top
-- [ ] Mark-as-read — call view endpoint on channel switch / viewport at bottom
-- [ ] Terminal resize — re-render on WindowSizeMsg, propagate to all sub-models
-- [ ] Error banner — dismissable error display in chat pane
+- [x] DM display name resolution — batch fetch via POST /api/v4/users/ids, cache
+- [~] Mute detection — parse preferences, mark IsMuted per channel (handled via notify_props in ChannelMember)
+- [x] Pagination — load more posts when viewport scrolled to top
+- [x] Mark-as-read — call view endpoint on channel switch / viewport at bottom
+- [x] Terminal resize — re-render on WindowSizeMsg, propagate to all sub-models
+- [x] Error banner — dismissable error display in chat pane (Esc to dismiss)
