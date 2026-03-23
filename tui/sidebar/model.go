@@ -83,6 +83,11 @@ func (m *Model) SetItems(items []ChannelItem) {
 	}
 }
 
+// Items returns the current channel items (used by tests to verify state).
+func (m Model) Items() []ChannelItem {
+	return m.items
+}
+
 // SetHeight updates the visible row count (called on WindowSizeMsg).
 func (m *Model) SetHeight(h int) {
 	m.height = h

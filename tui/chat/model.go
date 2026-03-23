@@ -10,6 +10,7 @@ import (
 
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
+	"github.com/thucdx/netchat-tui/internal/messages"
 	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
@@ -21,6 +22,8 @@ type Model struct {
 	channelName string              // for header display
 	userCache   map[string]api.User // keyed by userID
 	loading     bool
+	loadingMore bool                // true while fetching older posts (pagination)
+	page        int                 // current pagination page (0 = initial)
 	spinner     spinner.Model
 	err         error // last API error, displayed as banner
 	keys        keymap.KeyMap
@@ -49,6 +52,8 @@ func (m *Model) LoadPosts(channelID, channelName string, postList api.PostList, 
 	m.channelName = channelName
 	m.userCache = userCache
 	m.loading = false
+	m.loadingMore = false
+	m.page = 0
 	m.err = nil
 
 	// Collect posts from the map.
@@ -112,6 +117,56 @@ func (m Model) ChannelID() string {
 	return m.channelID
 }
 
+// SetChannelInfo sets the active channel ID and name without loading posts.
+// Used when selecting a channel before post data arrives.
+func (m *Model) SetChannelInfo(channelID, channelName string) {
+	m.channelID = channelID
+	m.channelName = channelName
+}
+
+// SetError sets or clears the error banner.
+func (m *Model) SetError(err error) {
+	m.err = err
+}
+
+// PrependPosts adds older posts at the top (from pagination).
+// Preserves the user's scroll position relative to existing content.
+func (m *Model) PrependPosts(postList api.PostList, page int) {
+	m.loadingMore = false
+	m.page = page
+
+	// Collect new posts from the map.
+	newPosts := make([]api.Post, 0, len(postList.Posts))
+	existing := make(map[string]struct{}, len(m.posts))
+	for _, p := range m.posts {
+		existing[p.ID] = struct{}{}
+	}
+	for _, p := range postList.Posts {
+		if p.DeleteAt > 0 {
+			continue
+		}
+		if _, dup := existing[p.ID]; dup {
+			continue
+		}
+		newPosts = append(newPosts, p)
+	}
+
+	if len(newPosts) == 0 {
+		return
+	}
+
+	// Sort new posts chronologically.
+	sort.Slice(newPosts, func(i, j int) bool {
+		return newPosts[i].CreateAt < newPosts[j].CreateAt
+	})
+
+	// Prepend to existing posts.
+	m.posts = append(newPosts, m.posts...)
+
+	content := RenderPosts(m.posts, m.userCache, m.width)
+	m.viewport.SetContent(content)
+}
+
 // SetSize updates the viewport dimensions.
 func (m *Model) SetSize(width, height int) {
 	m.width = width
@@ -163,6 +218,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
+		// Esc dismisses the error banner when one is shown.
+		if key.Matches(msg, m.keys.FocusSidebar) && m.err != nil {
+			m.err = nil
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.ScrollUp):
 			m.viewport.HalfViewUp()
@@ -178,6 +239,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.LineUp(1)
 		case key.Matches(msg, m.keys.Down):
 			m.viewport.LineDown(1)
+		}
+
+		// After scrolling, check if we're at the top for pagination.
+		if m.viewport.AtTop() && !m.loading && !m.loadingMore && m.channelID != "" && len(m.posts) > 0 {
+			m.loadingMore = true
+			nextPage := m.page + 1
+			channelID := m.channelID
+			cmds = append(cmds, func() tea.Msg {
+				return messages.LoadMorePostsMsg{
+					ChannelID: channelID,
+					Page:      nextPage,
+				}
+			})
 		}
 
 	case tea.WindowSizeMsg:

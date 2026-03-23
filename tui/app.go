@@ -190,6 +190,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ch := m.sidebar.SelectedChannel(); ch != nil {
 			channelName = ch.DisplayName
 		}
+		// Set channel on chat model immediately (before posts arrive).
+		m.chat.SetChannelInfo(msg.ChannelID, channelName)
 		// Clear sidebar unread badge.
 		m.sidebar.ClearUnread(msg.ChannelID)
 		if m.api != nil {
@@ -223,13 +225,26 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrorMsg:
 		// Release the send lock so the user can retry.
 		m.input.SetSending(false)
+		// Show error in the chat pane banner.
+		m.chat.SetError(msg.Err)
+		return m, nil
+
+	case messages.LoadMorePostsMsg:
+		if m.api != nil {
+			return m, m.cmdFetchMorePosts(msg.ChannelID, msg.Page)
+		}
+		return m, nil
+
+	case morePostsReadyMsg:
+		if msg.channelID == m.chat.ChannelID() {
+			m.chat.PrependPosts(msg.posts, msg.page)
+		}
 		return m, nil
 
 	// ── WebSocket real-time ───────────────────────────────────────────────────
 
 	case messages.NewPostMsg:
-		ch := m.sidebar.SelectedChannel()
-		if ch != nil && ch.Channel.ID == msg.Post.ChannelID {
+		if msg.Post.ChannelID == m.chat.ChannelID() {
 			m.chat.AppendPost(msg.Post)
 		} else {
 			m.sidebar.IncrementUnread(msg.Post.ChannelID)
@@ -336,12 +351,13 @@ func (m AppModel) cmdLoadTeam() tea.Cmd {
 func (m AppModel) cmdLoadChannels() tea.Cmd {
 	userID := m.userID
 	teamID := m.teamID
+	apiClient := m.api
 	return func() tea.Msg {
-		channels, err := m.api.GetChannelsForUser(userID, teamID)
+		channels, err := apiClient.GetChannelsForUser(userID, teamID)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
-		members, err := m.api.GetChannelMembersForUser(userID, teamID)
+		members, err := apiClient.GetChannelMembersForUser(userID, teamID)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -352,13 +368,47 @@ func (m AppModel) cmdLoadChannels() tea.Cmd {
 			memberByChannelID[mb.ChannelID] = mb
 		}
 
+		// Collect user IDs from DM channels for batch resolution.
+		dmUserIDs := make(map[string]struct{})
+		for _, ch := range channels {
+			if ch.Type == "D" {
+				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
+					dmUserIDs[otherID] = struct{}{}
+				}
+			}
+		}
+
+		// Batch fetch DM users for display name resolution.
+		dmUserCache := make(map[string]api.User)
+		if len(dmUserIDs) > 0 {
+			ids := make([]string, 0, len(dmUserIDs))
+			for id := range dmUserIDs {
+				ids = append(ids, id)
+			}
+			users, err := apiClient.GetUsersByIDs(ids)
+			if err == nil {
+				for _, u := range users {
+					dmUserCache[u.ID] = u
+				}
+			}
+			// On error, fall back to channel DisplayName (no crash).
+		}
+
 		items := make([]sidebar.ChannelItem, 0, len(channels))
 		for _, ch := range channels {
 			mb := memberByChannelID[ch.ID]
+			displayName := ch.DisplayName
+			if ch.Type == "D" {
+				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
+					if u, ok := dmUserCache[otherID]; ok && u.Username != "" {
+						displayName = u.Username
+					}
+				}
+			}
 			item := sidebar.ChannelItem{
 				Channel:     ch,
 				Member:      mb,
-				DisplayName: ch.DisplayName,
+				DisplayName: displayName,
 				UnreadCount: mb.UnreadCount(ch),
 				IsMuted:     mb.IsMuted(),
 			}
@@ -378,6 +428,21 @@ func (m AppModel) cmdFetchPosts(channelID, channelName string) tea.Cmd {
 			channelID:   channelID,
 			channelName: channelName,
 			posts:       posts,
+		}
+	}
+}
+
+func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
+	apiClient := m.api
+	return func() tea.Msg {
+		posts, err := apiClient.GetPostsForChannel(channelID, page, 60)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		return morePostsReadyMsg{
+			channelID: channelID,
+			posts:     posts,
+			page:      page,
 		}
 	}
 }

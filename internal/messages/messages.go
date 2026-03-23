@@ -27,5 +27,12 @@ type SendMessageMsg struct {
 	Text      string
 }
 
+// LoadMorePostsMsg is emitted by the chat model when the user scrolls to the
+// top and pagination should load the next page of older posts.
+type LoadMorePostsMsg struct {
+	ChannelID string
+	Page      int
+}
+
 // WSEventMsg wraps a raw WebSocket event for the Bubbletea update loop.
 type WSEventMsg struct{ Event api.WSEvent }
