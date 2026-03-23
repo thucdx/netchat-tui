@@ -233,7 +233,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for id, u := range msg.userCache {
 			m.userCache[id] = u
 		}
-		return m, nil
+		return m, m.titleCmd()
 
 	// ── Search ─────────────────────────────────────────────────────────────
 
@@ -303,9 +303,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Clear sidebar unread badge.
 		m.sidebar.ClearUnread(msg.ChannelID)
 		if m.api != nil {
-			return m, m.cmdFetchPosts(msg.ChannelID, channelName)
+			return m, tea.Batch(m.cmdFetchPosts(msg.ChannelID, channelName), m.titleCmd())
 		}
-		return m, nil
+		return m, m.titleCmd()
 
 	case postsReadyMsg:
 		// Merge newly fetched post authors into the app-wide user cache.
@@ -382,6 +382,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.AppendPost(msg.Post)
 		} else {
 			m.sidebar.IncrementUnread(msg.Post.ChannelID)
+			return m, m.titleCmd()
 		}
 		return m, nil
 
@@ -487,6 +488,20 @@ func (m AppModel) View() string {
 
 	chatAndInput := lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
 	return lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, chatAndInput)
+}
+
+// titleCmd returns a tea.SetWindowTitle command reflecting the current unread
+// state. Format: "netchat-tui [msgs/channels]" when there are unreads,
+// "netchat-tui" when everything is read. Only unmuted channels are counted.
+func (m AppModel) titleCmd() tea.Cmd {
+	msgs, chs := m.sidebar.UnreadSummary()
+	var title string
+	if chs == 0 {
+		title = "netchat-tui"
+	} else {
+		title = fmt.Sprintf("netchat-tui [%d/%d]", msgs, chs)
+	}
+	return tea.SetWindowTitle(title)
 }
 
 // ── API commands ──────────────────────────────────────────────────────────────
@@ -805,7 +820,7 @@ func (m *AppModel) handleWSEvent(event api.WSEvent) tea.Cmd {
 	case "post_edited":
 		return m.handlePostEdited(event)
 	case "channel_viewed":
-		m.handleChannelViewed(event)
+		return m.handleChannelViewed(event)
 	}
 	return nil
 }
@@ -845,11 +860,13 @@ func (m *AppModel) handlePostEdited(event api.WSEvent) tea.Cmd {
 }
 
 // handleChannelViewed clears unread badge for the viewed channel.
-func (m *AppModel) handleChannelViewed(event api.WSEvent) {
+func (m *AppModel) handleChannelViewed(event api.WSEvent) tea.Cmd {
 	channelID, _ := event.Data["channel_id"].(string)
 	if channelID != "" {
 		m.sidebar.ClearUnread(channelID)
+		return m.titleCmd()
 	}
+	return nil
 }
 
 // handleMouse processes mouse events for sidebar drag-to-resize.

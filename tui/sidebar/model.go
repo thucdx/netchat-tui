@@ -220,6 +220,20 @@ func (m *Model) applyDisplayNames() {
 	m.sortAndRebuild()
 }
 
+// UnreadSummary returns total unread messages and number of channels with
+// unreads, counting only unmuted channels. Uses allItems so channels outside
+// the current top-N window are included.
+func (m Model) UnreadSummary() (totalMsgs int64, channelCount int) {
+	for _, item := range m.allItems {
+		if item.IsMuted || item.UnreadCount == 0 {
+			continue
+		}
+		totalMsgs += item.UnreadCount
+		channelCount++
+	}
+	return
+}
+
 // ExitSearch exits search mode. Safe to call when not searching.
 func (m *Model) ExitSearch() {
 	m.exitSearch()
