@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -10,6 +11,23 @@ import (
 	"github.com/thucdx/netchat-tui/config"
 	"github.com/thucdx/netchat-tui/tui"
 )
+
+// setupTmux enables window-title renaming for the current tmux window so that
+// netchat-tui can update the tab with unread counts via OSC 2 escape sequences.
+// Returns a cleanup function that resets the window title to a plain
+// "netchat-tui" string when the app exits.
+// No-op (and returns a no-op cleanup) when not running inside tmux.
+func setupTmux() func() {
+	if os.Getenv("TMUX") == "" {
+		return func() {}
+	}
+	// Enable rename for this window only (not a global change).
+	exec.Command("tmux", "set-window-option", "allow-rename", "on").Run() //nolint:errcheck
+	return func() {
+		// Clear the unread indicator from the tab title on exit.
+		fmt.Fprint(os.Stdout, "\033]2;netchat-tui\007")
+	}
+}
 
 // authWrapper is a thin root model that captures AuthSuccessMsg emitted by
 // AuthModel so it can be inspected after the Bubbletea program exits.
@@ -71,6 +89,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: failed to create API client: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Enable tmux window-title renaming and schedule cleanup on exit.
+	defer setupTmux()()
 
 	// Launch the main chat UI.
 	app := tui.NewAppModel(apiClient)
