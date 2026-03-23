@@ -30,6 +30,17 @@ type authChallenge struct {
 	Data   map[string]interface{} `json:"data"`
 }
 
+// NewWSClientFromClient creates a WSClient derived from an existing HTTP Client.
+// It converts the https:// baseURL to wss:// and appends the WebSocket path.
+// Returns an error if the HTTP client's baseURL does not use the https scheme.
+func NewWSClientFromClient(c *Client) (*WSClient, error) {
+	if !strings.HasPrefix(c.baseURL, "https://") {
+		return nil, fmt.Errorf("api: baseURL must use https scheme")
+	}
+	wsURL := "wss://" + strings.TrimPrefix(c.baseURL, "https://") + "/api/v4/websocket"
+	return NewWSClient(c.token, wsURL)
+}
+
 // NewWSClient creates a WSClient. wsURL must start with "wss://".
 func NewWSClient(token, wsURL string) (*WSClient, error) {
 	if !strings.HasPrefix(wsURL, "wss://") {
