@@ -90,6 +90,23 @@ func (m *Model) AppendPost(post api.Post) {
 	}
 }
 
+// UpdatePost replaces an existing post (from WebSocket post_edited event).
+// If the post ID is not found in the current list, the call is a no-op.
+func (m *Model) UpdatePost(post api.Post) {
+	for i, p := range m.posts {
+		if p.ID == post.ID {
+			atBottom := m.viewport.AtBottom()
+			m.posts[i] = post
+			content := RenderPosts(m.posts, m.userCache, m.width)
+			m.viewport.SetContent(content)
+			if atBottom {
+				m.viewport.GotoBottom()
+			}
+			return
+		}
+	}
+}
+
 // SetSize updates the viewport dimensions.
 func (m *Model) SetSize(width, height int) {
 	m.width = width
