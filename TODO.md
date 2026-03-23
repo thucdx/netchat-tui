@@ -61,7 +61,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase 6 — Input Box
 
-- [ ] `tui/input/model.go` — textarea wrapper, Enter to send, Shift+Enter for newline
+- [x] `tui/input/model.go` — textarea wrapper, Enter to send, Shift+Enter for newline
 - [x] Wire SendMessageMsg in AppModel — call CreatePost, append to chat, scroll to bottom
 - [x] Disable input while send is in-flight
 
