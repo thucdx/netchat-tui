@@ -1,14 +1,16 @@
 package tui
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
+	"github.com/thucdx/netchat-tui/internal/messages"
+	"github.com/thucdx/netchat-tui/tui/chat"
+	"github.com/thucdx/netchat-tui/tui/input"
+	"github.com/thucdx/netchat-tui/tui/sidebar"
 	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
@@ -21,52 +23,94 @@ const (
 	FocusInput
 )
 
-// AppModel is the root Bubbletea model.
-// It owns layout, focus state, keymap, and will own sub-models in later phases.
-type AppModel struct {
-	layout Layout
-	focus  FocusPane
-	keys   keymap.KeyMap
-	api    *api.Client // nil in Phase 3; always nil-check before use
-	ready  bool        // true after first WindowSizeMsg received
+// app-internal message types (not exported; only used within this file)
+
+type teamLoadedMsg struct{ teamID string }
+
+type channelsLoadedMsg struct{ items []sidebar.ChannelItem }
+
+type postsReadyMsg struct {
+	channelID   string
+	channelName string
+	posts       api.PostList
 }
 
-// NewAppModel creates the root model.
+type postSentMsg struct{ post api.Post }
+
+// AppModel is the root Bubbletea model.
+type AppModel struct {
+	layout  Layout
+	focus   FocusPane
+	keys    keymap.KeyMap
+	api     *api.Client  // nil when running without a real backend
+	userID  string
+	teamID  string
+	ready   bool
+
+	sidebar sidebar.Model
+	chat    chat.Model
+	input   input.Model
+}
+
+// NewAppModel creates the root model. apiClient may be nil (e.g., tests).
 func NewAppModel(apiClient *api.Client) AppModel {
+	userID := ""
+	if apiClient != nil {
+		userID = apiClient.UserID()
+	}
+	keys := keymap.DefaultKeyMap()
 	return AppModel{
-		focus: FocusSidebar,
-		keys:  keymap.DefaultKeyMap(),
-		api:   apiClient,
+		focus:   FocusSidebar,
+		keys:    keys,
+		api:     apiClient,
+		userID:  userID,
+		sidebar: sidebar.NewModel(keys, userID),
+		chat:    chat.NewModel(keys),
+		input:   input.NewModel(keys),
 	}
 }
 
 // Init implements tea.Model.
 func (m AppModel) Init() tea.Cmd {
-	return nil
+	cmds := []tea.Cmd{
+		m.chat.Init(), // starts spinner tick
+	}
+	if m.api != nil {
+		cmds = append(cmds, m.cmdLoadTeam())
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	// ── Layout ────────────────────────────────────────────────────────────────
+
 	case tea.WindowSizeMsg:
 		m.layout = NewLayout(msg.Width, msg.Height)
 		m.ready = true
+		m.sidebar.SetHeight(m.layout.TotalHeight)
+		m.chat.SetSize(m.layout.ChatWidth, m.layout.ChatHeight)
+		m.input.SetSize(m.layout.ChatWidth, m.layout.InputHeight)
 		return m, nil
 
+	// ── Global key handling ───────────────────────────────────────────────────
+
 	case tea.KeyMsg:
-		// Quit: q or Ctrl+C only when sidebar is focused (never swallow 'q' from input).
-		if m.focus == FocusSidebar {
-			if key.Matches(msg, m.keys.Quit) {
-				return m, tea.Quit
-			}
-		} else if msg.String() == "ctrl+c" {
-			// Ctrl+C always quits regardless of focus.
+		// Ctrl+C always quits.
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
 
+		// q quits only when sidebar is focused (not while typing).
+		if m.focus == FocusSidebar && key.Matches(msg, m.keys.Quit) {
+			return m, tea.Quit
+		}
+
+		// Focus cycling.
 		switch {
 		case key.Matches(msg, m.keys.NextPanel):
-			// Cycle focus: Sidebar → Chat → Input → Sidebar
 			switch m.focus {
 			case FocusSidebar:
 				m.focus = FocusChat
@@ -75,22 +119,146 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case FocusInput:
 				m.focus = FocusSidebar
 			}
+			m.syncFocus()
+			return m, nil
 
 		case key.Matches(msg, m.keys.FocusInput):
-			// Focus input from sidebar or chat.
 			if m.focus == FocusSidebar || m.focus == FocusChat {
 				m.focus = FocusInput
+				m.syncFocus()
+				return m, nil
 			}
 
 		case key.Matches(msg, m.keys.FocusSidebar):
-			// Return focus to sidebar from input or chat.
 			if m.focus == FocusInput || m.focus == FocusChat {
 				m.focus = FocusSidebar
+				m.syncFocus()
+				return m, nil
 			}
 		}
+
+		// Route key to the focused pane.
+		return m.routeKey(msg)
+
+	// ── Data loading ──────────────────────────────────────────────────────────
+
+	case teamLoadedMsg:
+		m.teamID = msg.teamID
+		if m.api != nil {
+			return m, m.cmdLoadChannels()
+		}
+		return m, nil
+
+	case channelsLoadedMsg:
+		m.sidebar.SetItems(msg.items)
+		return m, nil
+
+	// ── Channel selection ─────────────────────────────────────────────────────
+
+	case messages.ChannelSelectedMsg:
+		// Update input so sends target the new channel.
+		m.input.SetChannelID(msg.ChannelID)
+		// Find channel name from sidebar for the chat header.
+		channelName := msg.ChannelID
+		if ch := m.sidebar.SelectedChannel(); ch != nil {
+			channelName = ch.DisplayName
+		}
+		// Clear sidebar unread badge.
+		m.sidebar.ClearUnread(msg.ChannelID)
+		if m.api != nil {
+			return m, m.cmdFetchPosts(msg.ChannelID, channelName)
+		}
+		return m, nil
+
+	case postsReadyMsg:
+		m.chat.LoadPosts(msg.channelID, msg.channelName, msg.posts, make(map[string]api.User))
+		// Mark channel as read in background (fire and forget).
+		if m.api != nil {
+			channelID := msg.channelID
+			go func() { _ = m.api.MarkChannelRead(channelID) }() //nolint:errcheck
+		}
+		return m, nil
+
+	// ── Sending messages ──────────────────────────────────────────────────────
+
+	case messages.SendMessageMsg:
+		if m.api == nil {
+			m.input.SetSending(false)
+			return m, nil
+		}
+		return m, m.cmdSendPost(msg.ChannelID, msg.Text)
+
+	case postSentMsg:
+		m.chat.AppendPost(msg.post)
+		m.input.SetSending(false)
+		return m, nil
+
+	case ErrorMsg:
+		// Release the send lock so the user can retry.
+		m.input.SetSending(false)
+		return m, nil
+
+	// ── WebSocket real-time ───────────────────────────────────────────────────
+
+	case messages.NewPostMsg:
+		ch := m.sidebar.SelectedChannel()
+		if ch != nil && ch.Channel.ID == msg.Post.ChannelID {
+			m.chat.AppendPost(msg.Post)
+		} else {
+			m.sidebar.IncrementUnread(msg.Post.ChannelID)
+		}
+		return m, nil
 	}
 
+	// Propagate spinner ticks and other internal messages to sub-models.
+	return m.tickSubModels(msg)
+}
+
+// syncFocus propagates the current focus state to the input sub-model.
+func (m *AppModel) syncFocus() {
+	m.input.SetFocused(m.focus == FocusInput)
+}
+
+// routeKey sends the key to the focused pane.
+func (m AppModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch m.focus {
+	case FocusSidebar:
+		result, cmd := m.sidebar.Update(msg)
+		if sb, ok := result.(sidebar.Model); ok {
+			m.sidebar = sb
+		}
+		return m, cmd
+
+	case FocusChat:
+		result, cmd := m.chat.Update(msg)
+		if cm, ok := result.(chat.Model); ok {
+			m.chat = cm
+		}
+		return m, cmd
+
+	case FocusInput:
+		result, cmd := m.input.Update(msg)
+		if im, ok := result.(input.Model); ok {
+			m.input = im
+		}
+		return m, cmd
+	}
 	return m, nil
+}
+
+// tickSubModels propagates non-key messages (spinner ticks, etc.) to all sub-models.
+func (m AppModel) tickSubModels(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	chatResult, cmd := m.chat.Update(msg)
+	if cm, ok := chatResult.(chat.Model); ok {
+		m.chat = cm
+	}
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
 // View implements tea.Model.
@@ -98,63 +266,94 @@ func (m AppModel) View() string {
 	if !m.ready {
 		return ""
 	}
-
 	if !m.layout.IsValid() {
 		return "Terminal too small — please resize to at least 60×10."
 	}
-
-	sidebarView := m.renderSidebar()
-	chatView := m.renderChat()
-	inputView := m.renderInput()
-
-	chatAndInput := lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
-	return lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, chatAndInput)
-}
-
-// renderSidebar renders the left panel with a static channel list.
-func (m AppModel) renderSidebar() string {
-	lines := []string{
-		"# general",
-		"@ john.doe",
-		"# random",
-	}
-	content := strings.Join(lines, "\n")
 
 	sidebarStyle := styles.SidebarStyle
 	if m.focus == FocusSidebar {
 		sidebarStyle = styles.SidebarFocusedStyle
 	}
+	sidebarView := sidebarStyle.Height(m.layout.TotalHeight).Render(m.sidebar.View())
 
-	// Height fills the full terminal height.
-	return sidebarStyle.Height(m.layout.TotalHeight).Render(content)
-}
-
-// renderChat renders the top-right chat panel with a placeholder message.
-func (m AppModel) renderChat() string {
-	placeholder := "Select a channel to start chatting"
-
-	// Note: ChatStyle has no border, so Width = ChatWidth directly.
-	// If a border is ever added, change to Width(m.layout.ChatWidth - 2).
-	chatStyle := styles.ChatStyle.
+	chatView := styles.ChatStyle.
 		Width(m.layout.ChatWidth).
 		Height(m.layout.ChatHeight).
-		Align(lipgloss.Center, lipgloss.Center)
+		Render(m.chat.View())
 
-	return chatStyle.Render(placeholder)
+	inputView := m.input.View()
+
+	chatAndInput := lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
+	return lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, chatAndInput)
 }
 
-// renderInput renders the bottom-right input panel with a placeholder prompt.
-func (m AppModel) renderInput() string {
-	placeholder := "> type here..."
+// ── API commands ──────────────────────────────────────────────────────────────
 
-	inputStyle := styles.InputStyle
-	if m.focus == FocusInput {
-		inputStyle = styles.InputFocusedStyle
+func (m AppModel) cmdLoadTeam() tea.Cmd {
+	return func() tea.Msg {
+		team, err := m.api.GetFirstTeam(m.userID)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		return teamLoadedMsg{teamID: team.ID}
 	}
+}
 
-	// Width accounts for the 2-character border (left + right).
-	return inputStyle.
-		Width(m.layout.ChatWidth - 2).
-		Height(m.layout.InputHeight - 2).
-		Render(placeholder)
+func (m AppModel) cmdLoadChannels() tea.Cmd {
+	userID := m.userID
+	teamID := m.teamID
+	return func() tea.Msg {
+		channels, err := m.api.GetChannelsForUser(userID, teamID)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		members, err := m.api.GetChannelMembersForUser(userID, teamID)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+
+		// Build member lookup map.
+		memberByChannelID := make(map[string]api.ChannelMember, len(members))
+		for _, mb := range members {
+			memberByChannelID[mb.ChannelID] = mb
+		}
+
+		items := make([]sidebar.ChannelItem, 0, len(channels))
+		for _, ch := range channels {
+			mb := memberByChannelID[ch.ID]
+			item := sidebar.ChannelItem{
+				Channel:     ch,
+				Member:      mb,
+				DisplayName: ch.DisplayName,
+				UnreadCount: mb.UnreadCount(ch),
+				IsMuted:     mb.IsMuted(),
+			}
+			items = append(items, item)
+		}
+		return channelsLoadedMsg{items: items}
+	}
+}
+
+func (m AppModel) cmdFetchPosts(channelID, channelName string) tea.Cmd {
+	return func() tea.Msg {
+		posts, err := m.api.GetPostsForChannel(channelID, 0, 60)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		return postsReadyMsg{
+			channelID:   channelID,
+			channelName: channelName,
+			posts:       posts,
+		}
+	}
+}
+
+func (m AppModel) cmdSendPost(channelID, text string) tea.Cmd {
+	return func() tea.Msg {
+		post, err := m.api.CreatePost(channelID, text)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		return postSentMsg{post: post}
+	}
 }

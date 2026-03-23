@@ -62,8 +62,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 ## Phase 6 — Input Box
 
 - [ ] `tui/input/model.go` — textarea wrapper, Enter to send, Shift+Enter for newline
-- [ ] Wire SendMessageMsg in AppModel — call CreatePost, append to chat, scroll to bottom
-- [ ] Disable input while send is in-flight
+- [x] Wire SendMessageMsg in AppModel — call CreatePost, append to chat, scroll to bottom
+- [x] Disable input while send is in-flight
 
 ## Phase 7 — WebSocket Real-Time
 
@@ -104,7 +104,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Testing — Phase 6 (Input)
 
-- [ ] `input_model_test.go` — Enter sends, clears textarea; Shift+Enter newline; disabled while in-flight
+- [x] `input_model_test.go` — Enter sends, clears textarea; Shift+Enter newline; disabled while in-flight
 
 ## Testing — Phase 7 (WebSocket)
 

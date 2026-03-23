@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/config"
 	"github.com/thucdx/netchat-tui/tui"
 )
@@ -64,8 +65,15 @@ func main() {
 		}
 	}
 
+	// Build the API client with the stored credentials.
+	apiClient, err := api.NewClient(config.BaseURL, cfg.Token, cfg.UserID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to create API client: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Launch the main chat UI.
-	p := tea.NewProgram(tui.NewAppModel(nil), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewAppModel(apiClient), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: app encountered an error: %v\n", err)
 		os.Exit(1)
