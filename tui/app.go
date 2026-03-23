@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 
@@ -447,8 +448,9 @@ func (m AppModel) cmdLoadChannels() tea.Cmd {
 }
 
 func (m AppModel) cmdFetchPosts(channelID, channelName string) tea.Cmd {
+	apiClient := m.api
 	return func() tea.Msg {
-		posts, err := m.api.GetPostsForChannel(channelID, 0, 60)
+		posts, err := apiClient.GetPostsForChannel(channelID, 0, 60)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -476,8 +478,9 @@ func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
 }
 
 func (m AppModel) cmdSendPost(channelID, text string) tea.Cmd {
+	apiClient := m.api
 	return func() tea.Msg {
-		post, err := m.api.CreatePost(channelID, text)
+		post, err := apiClient.CreatePost(channelID, text)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -495,7 +498,7 @@ func (m AppModel) cmdStartWS() tea.Cmd {
 		ws, err := api.NewWSClientFromClient(apiClient)
 		if err != nil {
 			log.Printf("ws: failed to create client: %v", err)
-			return nil
+			return ErrorMsg{Err: fmt.Errorf("WebSocket unavailable: %w", err)}
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -503,7 +506,7 @@ func (m AppModel) cmdStartWS() tea.Cmd {
 		if err := api.ConnectWithRetry(ctx, ws); err != nil {
 			log.Printf("ws: connect failed: %v", err)
 			cancel()
-			return nil
+			return ErrorMsg{Err: fmt.Errorf("WebSocket connection failed: %w", err)}
 		}
 
 		return wsConnectedMsg{ws: ws, cancel: cancel}
@@ -526,6 +529,9 @@ func (m AppModel) waitForWSEvent() tea.Cmd {
 }
 
 // handleWSEvent processes a single WS event and returns a Cmd (if any).
+// Pointer receiver: called from the value-receiver Update via `m.handleWSEvent(...)`.
+// Go takes the address of Update's local copy, so mutations are visible on the
+// returned copy. This is intentional — the updated AppModel is returned by Update.
 func (m *AppModel) handleWSEvent(event api.WSEvent) tea.Cmd {
 	switch event.Event {
 	case "posted":
@@ -538,7 +544,9 @@ func (m *AppModel) handleWSEvent(event api.WSEvent) tea.Cmd {
 	return nil
 }
 
-// handlePosted double-unmarshals the post from event.Data["post"] (JSON string).
+// handlePosted double-unmarshals the post from event.Data["post"] (JSON string)
+// and returns a NewPostMsg Cmd. All routing logic lives in the NewPostMsg handler
+// inside Update, so the test suite exercises the same code path as the WS flow.
 func (m *AppModel) handlePosted(event api.WSEvent) tea.Cmd {
 	post, ok := unmarshalPostFromEvent(event)
 	if !ok {
@@ -550,14 +558,7 @@ func (m *AppModel) handlePosted(event api.WSEvent) tea.Cmd {
 		return nil
 	}
 
-	activeID := m.chat.ChannelID()
-	if post.ChannelID == activeID {
-		m.chat.AppendPost(post)
-	} else {
-		// Increment unread for both normal and muted channels.
-		m.sidebar.IncrementUnread(post.ChannelID)
-	}
-	return nil
+	return func() tea.Msg { return messages.NewPostMsg{Post: post} }
 }
 
 // handlePostEdited double-unmarshals the post and updates the chat if active.

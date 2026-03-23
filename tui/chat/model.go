@@ -2,6 +2,7 @@ package chat
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -160,11 +161,21 @@ func (m *Model) PrependPosts(postList api.PostList, page int) {
 		return newPosts[i].CreateAt < newPosts[j].CreateAt
 	})
 
+	// Snapshot YOffset before prepending so we can re-anchor it after SetContent.
+	prevYOffset := m.viewport.YOffset
+
 	// Prepend to existing posts.
 	m.posts = append(newPosts, m.posts...)
 
+	// Measure how many lines the prepended posts add.
+	newContent := RenderPosts(newPosts, m.userCache, m.width)
+	addedLines := strings.Count(newContent, "\n") + 1
+
 	content := RenderPosts(m.posts, m.userCache, m.width)
 	m.viewport.SetContent(content)
+
+	// Re-anchor: keep the user's reading position stable.
+	m.viewport.YOffset = prevYOffset + addedLines
 }
 
 // SetSize updates the viewport dimensions.
