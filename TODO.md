@@ -109,13 +109,13 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 ## Testing — Phase 7 (WebSocket)
 
 - [x] `app_test.go` — posted to active/inactive/muted channel, channel_viewed clears badge
-- [ ] `websocket_test.go` — reconnect backoff caps at 30s
+- [x] `websocket_test.go` — reconnect backoff caps at 30s
 
 ## Testing — Phase 8 (Polish)
 
-- [ ] `sidebar_model_test.go` — pagination triggers load-more on scroll to top
+- [x] `chat_test.go` — pagination triggers load-more on scroll to top
 - [x] `app_test.go` — WindowSizeMsg propagates to all sub-models
-- [ ] `utils_test.go` — time formatting edge cases
+- [x] `chat_test.go` — time formatting edge cases (epoch, future, yesterday, older)
 
 ## Phase 8 — Polish and Edge Cases
 

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
+	"github.com/thucdx/netchat-tui/internal/messages"
 )
 
 // newTestModel returns a Model wired up for testing (no real terminal needed).
@@ -501,7 +502,55 @@ func TestErrorBannerDismiss(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 21. FormatTimestamp — epoch 0 (edge case)
+// 21. Pagination — scrolling to top emits LoadMorePostsMsg
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestScrollToTop_EmitsLoadMorePostsMsg(t *testing.T) {
+	m := newTestModel()
+
+	// Load some posts so the condition len(m.posts) > 0 is satisfied.
+	posts := []api.Post{
+		{ID: "p1", UserID: "u1", Message: "hello", CreateAt: 1000},
+		{ID: "p2", UserID: "u1", Message: "world", CreateAt: 2000},
+	}
+	pl := makePostList(posts)
+	m.LoadPosts("ch1", "General", pl, nil)
+
+	// Scroll viewport to the bottom so we can then scroll back up.
+	m.viewport.GotoBottom()
+
+	// Scroll up until at top. Each LineUp(1) moves one line.
+	for i := 0; i < 30; i++ {
+		m.viewport.LineUp(1)
+	}
+
+	// Now press 'k' (Up) while already at top — should emit LoadMorePostsMsg.
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected a Cmd to be returned when scrolling to top with posts loaded")
+	}
+
+	msg := cmd()
+	lmp, ok := msg.(messages.LoadMorePostsMsg)
+	if !ok {
+		t.Fatalf("expected LoadMorePostsMsg, got %T", msg)
+	}
+	if lmp.ChannelID != "ch1" {
+		t.Errorf("LoadMorePostsMsg.ChannelID = %q, want %q", lmp.ChannelID, "ch1")
+	}
+	if lmp.Page != 1 {
+		t.Errorf("LoadMorePostsMsg.Page = %d, want 1", lmp.Page)
+	}
+	// loadingMore should be set to prevent duplicate triggers.
+	if !m.loadingMore {
+		t.Error("m.loadingMore should be true after emitting LoadMorePostsMsg")
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 22. FormatTimestamp — epoch 0 (edge case)
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestFormatTimestamp_Epoch(t *testing.T) {
