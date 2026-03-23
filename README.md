@@ -36,28 +36,58 @@ A keyboard-driven terminal UI client for **netchat.viettel.vn** (Mattermost v4),
 
 ---
 
-## Requirements
+## Installation
 
-- **Go 1.22+**
-- A valid account on **netchat.viettel.vn**
-- A terminal with true-color support (iTerm2, Alacritty, kitty, Windows Terminal, etc.)
+### Option 1 — Download a pre-built binary (no Go required)
 
----
+Go to the [Releases page](https://github.com/thucdx/netchat-tui/releases/latest) and download the archive for your platform:
 
-## Build & run
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | `netchat-tui_*_darwin_arm64.tar.gz` |
+| macOS (Intel) | `netchat-tui_*_darwin_amd64.tar.gz` |
+| Linux (x86-64) | `netchat-tui_*_linux_amd64.tar.gz` |
+| Linux (ARM64) | `netchat-tui_*_linux_arm64.tar.gz` |
+| Windows (x86-64) | `netchat-tui_*_windows_amd64.zip` |
+
+Extract and run:
+
+```bash
+# macOS / Linux
+tar -xzf netchat-tui_*_linux_amd64.tar.gz
+./netchat-tui
+
+# move to PATH (optional)
+sudo mv netchat-tui /usr/local/bin/
+```
+
+### Option 2 — `go install` (requires Go 1.22+)
+
+```bash
+go install github.com/thucdx/netchat-tui@latest
+netchat-tui
+```
+
+### Option 3 — Build from source
 
 ```bash
 git clone https://github.com/thucdx/netchat-tui
 cd netchat-tui
-go run .
-```
-
-Or build a standalone binary:
-
-```bash
 go build -o netchat-tui .
 ./netchat-tui
 ```
+
+---
+
+## Requirements
+
+- A valid account on **netchat.viettel.vn**
+- A terminal with true-color support (iTerm2, Alacritty, kitty, Windows Terminal, etc.)
+- Go 1.22+ (only for Options 2 and 3 above)
+
+---
+
+## First run
 
 On first launch you will be taken to the **authentication screen** (see below). Subsequent launches go straight to the chat UI using the saved token.
 
