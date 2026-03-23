@@ -55,9 +55,9 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase 5 — Chat Viewport
 
-- [ ] `tui/chat/model.go` — viewport wrapper, fetch posts on channel select, userCache
-- [ ] `tui/chat/view.go` — message grouping, timestamps, system messages, channel header
-- [ ] Loading spinner while fetching messages
+- [x] `tui/chat/model.go` — viewport wrapper, fetch posts on channel select, userCache
+- [x] `tui/chat/view.go` — message grouping, timestamps, system messages, channel header
+- [x] Loading spinner while fetching messages
 
 ## Phase 6 — Input Box
 
@@ -99,8 +99,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Testing — Phase 5 (Chat Viewport)
 
-- [ ] `chat_model_test.go` — posts cleared on channel switch, chronological order, message grouping
-- [ ] `chat_view_test.go` — timestamp formats, system message style, unknown user graceful
+- [x] `chat_model_test.go` — posts cleared on channel switch, chronological order, message grouping
+- [x] `chat_view_test.go` — timestamp formats, system message style, unknown user graceful
 
 ## Testing — Phase 6 (Input)
 
