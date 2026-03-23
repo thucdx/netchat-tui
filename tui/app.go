@@ -31,12 +31,16 @@ const (
 
 // app-internal message types (not exported; only used within this file)
 
-type channelsLoadedMsg struct{ items []sidebar.ChannelItem }
+type channelsLoadedMsg struct {
+	items     []sidebar.ChannelItem
+	userCache map[string]api.User
+}
 
 type postsReadyMsg struct {
 	channelID   string
 	channelName string
 	posts       api.PostList
+	userCache   map[string]api.User // authors fetched alongside posts
 }
 
 type postSentMsg struct{ post api.Post }
@@ -74,8 +78,9 @@ type AppModel struct {
 	api     *api.Client  // nil when running without a real backend
 	ws      *api.WSClient // nil until WS connects
 	wsCancel context.CancelFunc // cancels WS reconnect loop
-	userID  string
-	ready   bool
+	userID    string
+	userCache map[string]api.User // all known users (DM partners + post authors)
+	ready     bool
 
 	sidebar sidebar.Model
 	chat    chat.Model
@@ -95,7 +100,7 @@ func NewAppModel(apiClient *api.Client) AppModel {
 		api:     apiClient,
 		userID:  userID,
 		sidebar: sidebar.NewModel(keys, userID),
-		chat:    chat.NewModel(keys),
+		chat:    chat.NewModel(keys, userID),
 		input:   input.NewModel(keys),
 	}
 }
@@ -182,6 +187,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case channelsLoadedMsg:
 		m.sidebar.SetItems(msg.items)
+		// Seed the app-wide user cache with DM partners / group members.
+		if m.userCache == nil {
+			m.userCache = make(map[string]api.User)
+		}
+		for id, u := range msg.userCache {
+			m.userCache[id] = u
+		}
 		return m, nil
 
 	// ── Channel selection ─────────────────────────────────────────────────────
@@ -204,7 +216,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case postsReadyMsg:
-		m.chat.LoadPosts(msg.channelID, msg.channelName, msg.posts, make(map[string]api.User))
+		// Merge newly fetched post authors into the app-wide user cache.
+		if m.userCache == nil {
+			m.userCache = make(map[string]api.User)
+		}
+		for id, u := range msg.userCache {
+			m.userCache[id] = u
+		}
+		m.chat.LoadPosts(msg.channelID, msg.channelName, msg.posts, m.userCache)
 		// Mark channel as read (fire and forget via tea.Cmd — returns nil on completion).
 		var markRead tea.Cmd
 		if m.api != nil {
@@ -481,21 +500,47 @@ func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 			}
 			items = append(items, item)
 		}
-		return channelsLoadedMsg{items: items}
+		return channelsLoadedMsg{items: items, userCache: userCache}
 	}
 }
 
 func (m AppModel) cmdFetchPosts(channelID, channelName string) tea.Cmd {
 	apiClient := m.api
+	known := m.userCache // snapshot of already-known users (read-only in goroutine)
 	return func() tea.Msg {
 		posts, err := apiClient.GetPostsForChannel(channelID, 0, 60)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
+
+		// Collect unique author IDs not yet in the cache.
+		missing := make(map[string]struct{})
+		for _, p := range posts.Posts {
+			if p.UserID != "" {
+				if _, ok := known[p.UserID]; !ok {
+					missing[p.UserID] = struct{}{}
+				}
+			}
+		}
+
+		userCache := make(map[string]api.User)
+		if len(missing) > 0 {
+			ids := make([]string, 0, len(missing))
+			for id := range missing {
+				ids = append(ids, id)
+			}
+			if users, err := apiClient.GetUsersByIDs(ids); err == nil {
+				for _, u := range users {
+					userCache[u.ID] = u
+				}
+			}
+		}
+
 		return postsReadyMsg{
 			channelID:   channelID,
 			channelName: channelName,
 			posts:       posts,
+			userCache:   userCache,
 		}
 	}
 }

@@ -11,7 +11,7 @@ This document defines the roles, responsibilities, and communication protocol fo
 | **Orchestrator** | `orchestrator` | Plans phases, assigns tasks, gates commits, updates TODO.md. Acts as team lead. |
 | **Builder-WS** | `builder-ws` | Implements WebSocket / real-time features: `api/websocket.go`, WS pump in `tui/app.go`, reconnect logic. |
 | **Builder-UX** | `builder-ux` | Implements UI polish and edge cases: DM name resolution, pagination, resize, error banner, mute detection. |
-| **QA** | `qa` | Writes and runs all tests (`go test ./...`), security audit against S1–S11. Combines Tester + Security roles. |
+| **QA** | `qa` | Writes and runs all tests (`go test ./...`), security audit against S1–S11. Also performs **live end-to-end testing**: builds the app, launches it against the real server, and exercises it as a real user to catch runtime bugs that unit tests cannot. Combines Tester + Security + Manual QA roles. |
 | **Reviewer** | `reviewer` | Reviews code for architecture, Go idioms, and correctness. Gates each phase before Orchestrator commits. |
 
 ---

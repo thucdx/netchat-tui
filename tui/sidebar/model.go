@@ -41,6 +41,7 @@ type Model struct {
 	selected   int               // index into items (-1 = none)
 	viewOffset int               // virtual scroll: first visible item index
 	height     int               // visible rows available (set by AppModel on resize)
+	pendingG   bool              // true after first 'g' press (for gg jump-to-top)
 	keys       keymap.KeyMap
 	userID     string            // current user ID (to resolve DM names)
 	userCache  map[string]api.User
@@ -57,6 +58,15 @@ func NewModel(keys keymap.KeyMap, userID string) Model {
 		userID:    userID,
 		userCache: make(map[string]api.User),
 	}
+}
+
+// visibleHeight returns the number of item rows the view can actually render.
+// When the indicator row is shown (items exceed height), one row is reserved.
+func (m Model) visibleHeight() int {
+	if len(m.items) > m.height && m.height > 1 {
+		return m.height - 1
+	}
+	return m.height
 }
 
 // SetLimit changes the maximum number of channels displayed.
@@ -117,8 +127,10 @@ func (m *Model) sortAndRebuild() {
 		}
 	}
 
-	// Clamp viewOffset.
-	maxOffset := len(m.items) - m.height
+	// Clamp viewOffset to max (never increase it — auto-scrolling down would
+	// hide newly-active channels that bubbled to the top on each IncrementUnread).
+	vh := m.visibleHeight()
+	maxOffset := len(m.items) - vh
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -193,18 +205,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
+		case key.Matches(msg, m.keys.JumpToTop):
+			if m.pendingG {
+				// Second g: jump to top
+				m.cursor = 0
+				m.viewOffset = 0
+				m.pendingG = false
+			} else {
+				// First g: arm pending
+				m.pendingG = true
+			}
+			return m, nil
+
 		case key.Matches(msg, m.keys.Down):
+			m.pendingG = false
 			if len(m.items) > 0 {
 				m.cursor++
 				if m.cursor >= len(m.items) {
 					m.cursor = len(m.items) - 1
 				}
-				if m.cursor > m.viewOffset+m.height-1 {
-					m.viewOffset = m.cursor - m.height + 1
+				vh := m.visibleHeight()
+				if m.cursor > m.viewOffset+vh-1 {
+					m.viewOffset = m.cursor - vh + 1
 				}
 			}
 
 		case key.Matches(msg, m.keys.Up):
+			m.pendingG = false
 			if len(m.items) > 0 {
 				m.cursor--
 				if m.cursor < 0 {
@@ -216,9 +243,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.JumpToBottom):
+			m.pendingG = false
 			if len(m.items) > 0 {
 				m.cursor = len(m.items) - 1
-				offset := len(m.items) - m.height
+				offset := len(m.items) - m.visibleHeight()
 				if offset < 0 {
 					offset = 0
 				}
@@ -226,21 +254,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.ScrollUp):
-			m.viewOffset -= m.height / 2
+			m.pendingG = false
+			vh := m.visibleHeight()
+			m.viewOffset -= vh / 2
 			if m.viewOffset < 0 {
 				m.viewOffset = 0
 			}
 			// Keep cursor inside the visible window.
-			if m.cursor > m.viewOffset+m.height-1 {
-				m.cursor = m.viewOffset + m.height - 1
+			if m.cursor > m.viewOffset+vh-1 {
+				m.cursor = m.viewOffset + vh - 1
 			}
 
 		case key.Matches(msg, m.keys.ScrollDown):
-			maxOffset := len(m.items) - m.height
+			m.pendingG = false
+			vh := m.visibleHeight()
+			maxOffset := len(m.items) - vh
 			if maxOffset < 0 {
 				maxOffset = 0
 			}
-			m.viewOffset += m.height / 2
+			m.viewOffset += vh / 2
 			if m.viewOffset > maxOffset {
 				m.viewOffset = maxOffset
 			}
@@ -250,6 +282,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.Select):
+			m.pendingG = false
 			if len(m.items) > 0 && m.cursor >= 0 && m.cursor < len(m.items) {
 				m.selected = m.cursor
 				return m, func() tea.Msg {

@@ -68,13 +68,16 @@ The token is saved to `~/.config/netchat-tui/config.json` (mode `0600`) and reus
 
 ### Sidebar (channel list)
 
-Channels are ordered by most recent activity within each section (DMs first, then channels).
+Channels are ordered by most recent activity (flat mixed list — icons indicate type).
 
 | Key | Action |
 |-----|--------|
 | `j` or `↓` | Move cursor down |
 | `k` or `↑` | Move cursor up |
+| `gg` | Jump to top of list |
 | `G` | Jump to bottom of list |
+| `Ctrl+U` | Scroll up half page |
+| `Ctrl+D` | Scroll down half page |
 | `Enter` | Open highlighted channel |
 
 ### Chat pane (message history)
@@ -87,6 +90,7 @@ Channels are ordered by most recent activity within each section (DMs first, the
 | `Ctrl+F` | Page down |
 | `k` or `↑` | Scroll up one line |
 | `j` or `↓` | Scroll down one line |
+| `gg` | Scroll to oldest message |
 | `G` | Jump to latest message |
 
 Scrolling to the top automatically loads older messages.

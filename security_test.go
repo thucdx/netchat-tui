@@ -122,7 +122,7 @@ func TestSecurity_ANSIStrippedFromMessages(t *testing.T) {
 		"u1": {ID: "u1", Username: "alice"},
 	}
 
-	rendered := chat.RenderPosts(posts, userCache, 80)
+	rendered := chat.RenderPosts(posts, userCache, "", 80)
 
 	if strings.Contains(rendered, "\x1b[") {
 		t.Errorf("rendered output must not contain ANSI escapes; got: %q", rendered)
@@ -148,7 +148,7 @@ func TestSecurity_ANSIStrippedFromSystemMessages(t *testing.T) {
 		},
 	}
 
-	rendered := chat.RenderPosts(posts, nil, 80)
+	rendered := chat.RenderPosts(posts, nil, "", 80)
 
 	if strings.Contains(rendered, "\x1b[") {
 		t.Errorf("system message must not contain ANSI escapes; got: %q", rendered)
@@ -173,7 +173,7 @@ func TestSecurity_ANSICursorMovement(t *testing.T) {
 		"u1": {ID: "u1", Username: "bob"},
 	}
 
-	rendered := chat.RenderPosts(posts, userCache, 80)
+	rendered := chat.RenderPosts(posts, userCache, "", 80)
 
 	if strings.Contains(rendered, "\x1b[") {
 		t.Errorf("cursor movement escapes should be stripped; got: %q", rendered)

@@ -15,7 +15,7 @@ import (
 // newTestModel returns a Model wired up for testing (no real terminal needed).
 func newTestModel() Model {
 	km := keymap.DefaultKeyMap()
-	m := NewModel(km)
+	m := NewModel(km, "")
 	// Give the viewport a non-zero size so AtBottom()/GotoBottom() work correctly.
 	m.viewport = viewport.New(80, 20)
 	return m
@@ -158,7 +158,7 @@ func TestRenderPosts_MessageGrouping(t *testing.T) {
 		"alice": {ID: "alice", Username: "alice"},
 	}
 
-	rendered := RenderPosts(posts, userCache, 0)
+	rendered := RenderPosts(posts, userCache, "", 0)
 
 	// Strip ANSI so we can count occurrences in plain text.
 	plain := stripANSI(rendered)
@@ -178,7 +178,7 @@ func TestRenderPosts_SystemMessage(t *testing.T) {
 		{ID: "1", UserID: "system", Message: "Alice joined the channel", CreateAt: 100, Type: "system_join_channel"},
 	}
 
-	rendered := RenderPosts(posts, nil, 0)
+	rendered := RenderPosts(posts, nil, "", 0)
 
 	// System message content should appear in the rendered output
 	if !strings.Contains(rendered, posts[0].Message) && !strings.Contains(rendered, "system") {
@@ -199,7 +199,7 @@ func TestRenderPosts_EditedIndicator(t *testing.T) {
 		{ID: "1", UserID: "u1", Message: "original text", CreateAt: 100, EditAt: 200},
 	}
 
-	rendered := RenderPosts(posts, nil, 0)
+	rendered := RenderPosts(posts, nil, "", 0)
 	plain := stripANSI(rendered)
 
 	if !strings.Contains(plain, "(edited)") {
@@ -217,7 +217,7 @@ func TestRenderPosts_ANSIStripped(t *testing.T) {
 		{ID: "1", UserID: "u1", Message: ansiMsg, CreateAt: 100},
 	}
 
-	rendered := RenderPosts(posts, nil, 0)
+	rendered := RenderPosts(posts, nil, "", 0)
 	plain := stripANSI(rendered)
 
 	// The raw ANSI clear-screen sequence \x1b[2J must not appear in the plain output.
@@ -482,7 +482,7 @@ func (e errForTest) Error() string { return string(e) }
 func TestErrorBannerDismiss(t *testing.T) {
 	// Use DefaultKeyMap so that Esc (FocusSidebar) key matches.
 	km := keymap.DefaultKeyMap()
-	m := NewModel(km)
+	m := NewModel(km, "")
 	m.viewport = viewport.New(80, 20)
 	m.SetError(errForTest("some error"))
 	m.width = 80
@@ -575,5 +575,70 @@ func TestFormatTimestamp_Future(t *testing.T) {
 
 	if len(result) != 5 || result[2] != ':' {
 		t.Errorf("future timestamp should render as HH:MM, got %q", result)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 23. gg double-press scrolls viewport to the top.
+// ────────────────────────────────────────────────────────────────────────────
+
+func chatPressKey(m Model, msg tea.KeyMsg) Model {
+	updated, _ := m.Update(msg)
+	return updated.(Model)
+}
+
+func TestGGScrollsToTop(t *testing.T) {
+	m := newTestModel()
+	posts := make([]api.Post, 30)
+	for i := range posts {
+		posts[i] = api.Post{ID: string(rune('a'+i%26)) + string(rune('0'+i/26)), UserID: "u1", Message: "msg", CreateAt: int64(i + 1)}
+	}
+	m.LoadPosts("ch1", "general", makePostList(posts), nil)
+
+	// Scroll to the bottom first.
+	m.viewport.GotoBottom()
+	if m.viewport.AtTop() {
+		t.Skip("viewport too small to test scroll; skipping")
+	}
+
+	// First g: arms pendingG.
+	m = chatPressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	if !m.pendingG {
+		t.Error("after first g: expected pendingG=true")
+	}
+
+	// Second g: fires GotoTop.
+	m = chatPressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	if m.pendingG {
+		t.Error("after second g: expected pendingG=false")
+	}
+	if !m.viewport.AtTop() {
+		t.Errorf("after gg: viewport should be at top (YOffset=%d)", m.viewport.YOffset)
+	}
+}
+
+// 24. A non-g key resets pendingG in chat without scrolling to top.
+func TestChatGGCancelledByOtherKey(t *testing.T) {
+	m := newTestModel()
+	posts := make([]api.Post, 30)
+	for i := range posts {
+		posts[i] = api.Post{ID: string(rune('a'+i%26)) + string(rune('0'+i/26)), UserID: "u1", Message: "msg", CreateAt: int64(i + 1)}
+	}
+	m.LoadPosts("ch1", "general", makePostList(posts), nil)
+	m.viewport.GotoBottom()
+
+	// Arm pendingG.
+	m = chatPressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	if !m.pendingG {
+		t.Fatalf("expected pendingG=true after first g")
+	}
+
+	// Press k — should cancel pendingG but NOT jump to top.
+	m = chatPressKey(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	if m.pendingG {
+		t.Error("pendingG should be reset after pressing k")
+	}
+	if m.viewport.AtTop() {
+		t.Error("viewport should not have jumped to top after g then k")
 	}
 }

@@ -41,9 +41,10 @@ func pressKey(m Model, msg tea.KeyMsg) Model {
 	return updated.(Model)
 }
 
-func keyJ() tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")} }
-func keyK() tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")} }
-func keyG() tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")} }
+func keyJ() tea.KeyMsg        { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")} }
+func keyK() tea.KeyMsg        { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")} }
+func keyG() tea.KeyMsg        { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")} }
+func keyLowercaseG() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")} }
 func keyEnter() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyEnter} }
 func keyCtrlU() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyCtrlU} }
 func keyCtrlD() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyCtrlD} }
@@ -115,9 +116,10 @@ func TestJumpToBottom(t *testing.T) {
 	if m.cursor != 5 {
 		t.Errorf("G: expected cursor=5, got %d", m.cursor)
 	}
-	// viewOffset should be len(items) - height = 6 - 3 = 3.
-	if m.viewOffset != 3 {
-		t.Errorf("G: expected viewOffset=3, got %d", m.viewOffset)
+	// visibleHeight = height-1 = 2 (indicator takes 1 row when items > height).
+	// viewOffset = len(items) - visibleHeight = 6 - 2 = 4.
+	if m.viewOffset != 4 {
+		t.Errorf("G: expected viewOffset=4, got %d", m.viewOffset)
 	}
 }
 
@@ -136,9 +138,9 @@ func TestVirtualScroll(t *testing.T) {
 	if m.cursor != 4 {
 		t.Errorf("after 4 j presses: expected cursor=4, got %d", m.cursor)
 	}
-	// cursor=4, height=3: viewOffset should be 4 - 3 + 1 = 2.
-	if m.viewOffset != 2 {
-		t.Errorf("virtual scroll: expected viewOffset=2, got %d", m.viewOffset)
+	// visibleHeight = height-1 = 2; cursor=4: viewOffset = 4 - 2 + 1 = 3.
+	if m.viewOffset != 3 {
+		t.Errorf("virtual scroll: expected viewOffset=3, got %d", m.viewOffset)
 	}
 }
 
@@ -254,13 +256,13 @@ func TestCtrlDScrollsDown(t *testing.T) {
 	// viewOffset starts at 0, cursor at 0.
 	m = pressKey(m, keyCtrlD())
 
-	// half-page = 4/2 = 2; viewOffset moves to 2.
-	if m.viewOffset != 2 {
-		t.Errorf("after ctrl+d: expected viewOffset=2, got %d", m.viewOffset)
+	// visibleHeight = 4-1 = 3 (indicator row); half-page = 3/2 = 1; viewOffset moves to 1.
+	if m.viewOffset != 1 {
+		t.Errorf("after ctrl+d: expected viewOffset=1, got %d", m.viewOffset)
 	}
-	// cursor was at 0, which is now below viewOffset=2, so it clamps to 2.
-	if m.cursor != 2 {
-		t.Errorf("after ctrl+d: cursor should clamp to viewOffset=2, got %d", m.cursor)
+	// cursor was at 0, which is now below viewOffset=1, so it clamps to 1.
+	if m.cursor != 1 {
+		t.Errorf("after ctrl+d: cursor should clamp to viewOffset=1, got %d", m.cursor)
 	}
 }
 
@@ -271,13 +273,14 @@ func TestCtrlDClampsAtBottom(t *testing.T) {
 	items := makeItems(6, "O")
 	m.SetItems(items)
 
-	// max offset = 6 - 4 = 2; pressing ctrl+d twice from 0 should clamp at 2.
+	// visibleHeight = 3; max offset = 6 - 3 = 3; should clamp at 3.
+	m = pressKey(m, keyCtrlD())
 	m = pressKey(m, keyCtrlD())
 	m = pressKey(m, keyCtrlD())
 	m = pressKey(m, keyCtrlD())
 
-	if m.viewOffset != 2 {
-		t.Errorf("ctrl+d clamped: expected viewOffset=2, got %d", m.viewOffset)
+	if m.viewOffset != 3 {
+		t.Errorf("ctrl+d clamped: expected viewOffset=3, got %d", m.viewOffset)
 	}
 }
 
@@ -288,29 +291,29 @@ func TestCtrlUScrollsUp(t *testing.T) {
 	items := makeItems(10, "O")
 	m.SetItems(items)
 
-	// Move offset and cursor down first.
-	m = pressKey(m, keyCtrlD())
-	m = pressKey(m, keyCtrlD())
-	// viewOffset=4, cursor=4 (clamped to viewOffset after each Ctrl+D).
+	// visibleHeight=3, half=1. Press Ctrl+D 4 times to reach viewOffset=4.
+	for i := 0; i < 4; i++ {
+		m = pressKey(m, keyCtrlD())
+	}
 	if m.viewOffset != 4 {
 		t.Fatalf("setup: expected viewOffset=4, got %d", m.viewOffset)
 	}
 
-	// Move cursor to bottom of visible window (index 7 = viewOffset+height-1).
-	for m.cursor < m.viewOffset+m.height-1 {
+	// Move cursor to bottom of visible window: viewOffset+visibleHeight-1 = 4+3-1 = 6.
+	for m.cursor < m.viewOffset+m.visibleHeight()-1 {
 		m = pressKey(m, keyJ())
 	}
-	if m.cursor != 7 {
-		t.Fatalf("setup: expected cursor=7, got %d", m.cursor)
+	if m.cursor != 6 {
+		t.Fatalf("setup: expected cursor=6, got %d", m.cursor)
 	}
 
-	// Scroll up one half-page: viewOffset → 2, cursor at 7 > 2+4-1=5, clamps to 5.
+	// Ctrl+U: viewOffset -= 1 → 3; cursor=6 > 3+3-1=5, clamps to 5.
 	m = pressKey(m, keyCtrlU())
-	if m.viewOffset != 2 {
-		t.Errorf("after ctrl+u: expected viewOffset=2, got %d", m.viewOffset)
+	if m.viewOffset != 3 {
+		t.Errorf("after ctrl+u: expected viewOffset=3, got %d", m.viewOffset)
 	}
 	if m.cursor != 5 {
-		t.Errorf("after ctrl+u: cursor should clamp to viewOffset+height-1=5, got %d", m.cursor)
+		t.Errorf("after ctrl+u: cursor should clamp to viewOffset+visibleHeight-1=5, got %d", m.cursor)
 	}
 }
 
@@ -402,5 +405,66 @@ func TestRenderedWidthWithinBounds(t *testing.T) {
 		if w > styles.SidebarWidth {
 			t.Errorf("row exceeds SidebarWidth (%d): width=%d row=%q", styles.SidebarWidth, w, row)
 		}
+	}
+}
+
+// 14. gg double-press jumps cursor to top and resets viewOffset.
+func TestGGJumpsToTop(t *testing.T) {
+	m := newModel()
+	m.SetHeight(3)
+	items := makeItems(6, "O")
+	m.SetItems(items)
+
+	// Move to bottom first.
+	m = pressKey(m, keyG())
+	if m.cursor != 5 {
+		t.Fatalf("setup: expected cursor=5, got %d", m.cursor)
+	}
+
+	// First g: arms pendingG.
+	m = pressKey(m, keyLowercaseG())
+	if !m.pendingG {
+		t.Error("after first g: expected pendingG=true")
+	}
+	if m.cursor != 5 {
+		t.Errorf("after first g: cursor should be unchanged, got %d", m.cursor)
+	}
+
+	// Second g: fires jump-to-top.
+	m = pressKey(m, keyLowercaseG())
+	if m.pendingG {
+		t.Error("after second g: expected pendingG=false")
+	}
+	if m.cursor != 0 {
+		t.Errorf("after gg: expected cursor=0, got %d", m.cursor)
+	}
+	if m.viewOffset != 0 {
+		t.Errorf("after gg: expected viewOffset=0, got %d", m.viewOffset)
+	}
+}
+
+// 15. A non-g key resets pendingG without jumping.
+func TestGGCancelledByOtherKey(t *testing.T) {
+	m := newModel()
+	items := makeItems(6, "O")
+	m.SetItems(items)
+
+	// Move down so cursor is not at 0.
+	m = pressKey(m, keyJ())
+	m = pressKey(m, keyJ())
+
+	// Arm pendingG.
+	m = pressKey(m, keyLowercaseG())
+	if !m.pendingG {
+		t.Fatalf("expected pendingG=true after first g")
+	}
+
+	// Press j — should cancel pendingG and move cursor, not jump to top.
+	m = pressKey(m, keyJ())
+	if m.pendingG {
+		t.Error("pendingG should be reset after pressing j")
+	}
+	if m.cursor == 0 {
+		t.Error("cursor should not have jumped to 0")
 	}
 }

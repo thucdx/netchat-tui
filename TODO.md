@@ -4,13 +4,24 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase Gate Checklist — ALL PHASES COMPLETE
 
-Phases 1–8 gated 2026-03-23. Post-ship fixes gated 2026-03-23.
+Phases 1–9 gated 2026-03-23. Post-ship fixes gated 2026-03-23.
 
 - [x] Coder: all phase tasks implemented (builder-ws + builder-ux)
 - [x] Tester: all phase tests pass — 17 sidebar tests, 9 packages, 0 failures (qa)
 - [x] Security: no High severity findings open (S2–S9 all resolved)
 - [x] Reviewer: no blocking issues open (sidebar refactor approved by reviewer)
 - [x] Orchestrator: TODO.md updated
+
+## Phase 9 — gg keybinding + input pane fix (2026-03-23)
+
+- [x] `tui/sidebar/model.go` — add `gg` (double-g) jump-to-top: cursor=0, viewOffset=0
+- [x] `tui/chat/model.go` — add `gg` jump-to-oldest: viewport.GotoTop()
+- [x] `internal/keymap/keymap.go` — add `JumpToTop` binding (key: `g`, help: `gg`)
+- [x] `tui/input/model.go` — fix SetSize: `textarea.SetHeight(height-2)` not `height` (border overflow bug)
+- [x] Tests for `gg` in sidebar and chat
+- [x] Tests for input height fix
+
+---
 
 ## Post-ship fixes (2026-03-23)
 

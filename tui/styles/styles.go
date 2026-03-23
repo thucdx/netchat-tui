@@ -67,6 +67,12 @@ var (
 			PaddingLeft(1).
 			Width(SidebarWidth - 2)
 
+	ChannelActive = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true).
+			PaddingLeft(1).
+			Width(SidebarWidth - 2)
+
 	ChannelUnread = lipgloss.NewStyle().
 			Foreground(colorUnread).
 			Bold(true).
@@ -88,6 +94,11 @@ var (
 
 	MessageUsername = lipgloss.NewStyle().
 			Foreground(colorPrimary).
+			Bold(true)
+
+	// MessageMyUsername styles the "You" header for messages sent by the current user.
+	MessageMyUsername = lipgloss.NewStyle().
+			Foreground(colorSuccess).
 			Bold(true)
 
 	MessageTimestamp = lipgloss.NewStyle().

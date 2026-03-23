@@ -53,7 +53,11 @@ func (m *Model) SetSize(width, height int) {
 		taWidth = 1
 	}
 	m.textarea.SetWidth(taWidth)
-	m.textarea.SetHeight(height)
+	taHeight := height - 2 // subtract top and bottom border
+	if taHeight < 1 {
+		taHeight = 1
+	}
+	m.textarea.SetHeight(taHeight)
 }
 
 // SetFocused gives or removes focus from the textarea.

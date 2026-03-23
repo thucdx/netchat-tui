@@ -16,7 +16,11 @@ func Render(m Model) string {
 
 	// Items are pre-sorted by SetItems/IncrementUnread by LastPostAt descending.
 	// Compute the visible window directly.
-	end := m.viewOffset + m.height
+	visibleHeight := m.height
+	if len(m.items) > m.height {
+		visibleHeight = m.height - 1
+	}
+	end := m.viewOffset + visibleHeight
 	if end > len(m.items) {
 		end = len(m.items)
 	}
@@ -105,10 +109,13 @@ func Render(m Model) string {
 		}
 
 		// Apply row style.
+		// Priority: cursor > selected (active channel) > muted > unread > normal.
 		var rowStyle lipgloss.Style
 		switch {
 		case isCursor:
 			rowStyle = styles.ChannelSelected
+		case isSelected:
+			rowStyle = styles.ChannelActive
 		case item.IsMuted:
 			rowStyle = styles.ChannelMuted
 		case item.UnreadCount > 0:
@@ -116,9 +123,14 @@ func Render(m Model) string {
 		default:
 			rowStyle = styles.ChannelNormal
 		}
-		_ = isSelected // reserved: open channel could get a distinct style later
 
 		lines = append(lines, rowStyle.Render(rowContent))
+	}
+
+	// Append scroll position indicator when list exceeds visible height.
+	if len(m.items) > m.height {
+		indicator := fmt.Sprintf("  ↕ %d/%d", m.cursor+1, len(m.items))
+		lines = append(lines, styles.SubtleStyle.Width(styles.SidebarWidth-2).Render(indicator))
 	}
 
 	return strings.Join(lines, "\n")

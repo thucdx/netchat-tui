@@ -20,9 +20,10 @@ func stripANSI(s string) string {
 
 // RenderPosts converts a sorted []api.Post into a single string for the viewport.
 // Groups consecutive posts from the same user (only first shows username+timestamp).
+// myUserID is the logged-in user's ID; their messages show "You" in a distinct colour.
 // Strips ANSI from message content.
 // Shows "(edited)" for posts with EditAt > 0.
-func RenderPosts(posts []api.Post, userCache map[string]api.User, width int) string {
+func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int) string {
 	if len(posts) == 0 {
 		return ""
 	}
@@ -55,9 +56,15 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, width int) str
 
 		if !isGrouped {
 			// Header line: username + timestamp.
-			username := resolveUsername(post.UserID, userCache)
+			// Current user gets a distinct "You ▶" label in green; others get their name in purple.
 			timestamp := FormatTimestamp(post.CreateAt)
-			usernameStr := styles.MessageUsername.Render(username)
+			var usernameStr string
+			if myUserID != "" && post.UserID == myUserID {
+				usernameStr = styles.MessageMyUsername.Render("You ▶")
+			} else {
+				username := resolveUsername(post.UserID, userCache)
+				usernameStr = styles.MessageUsername.Render(username)
+			}
 			timestampStr := styles.MessageTimestamp.Render(" " + timestamp)
 			sb.WriteString(usernameStr + timestampStr + "\n")
 		}

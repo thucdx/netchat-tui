@@ -22,18 +22,21 @@ type Model struct {
 	channelID   string              // currently displayed channel
 	channelName string              // for header display
 	userCache   map[string]api.User // keyed by userID
+	userID      string              // logged-in user's ID (to distinguish own messages)
 	loading     bool
 	loadingMore bool                // true while fetching older posts (pagination)
 	page        int                 // current pagination page (0 = initial)
 	spinner     spinner.Model
 	err         error // last API error, displayed as banner
+	pendingG    bool             // true after first 'g' press (for gg jump-to-top)
 	keys        keymap.KeyMap
 	width       int
 	height      int // chat area height (excludes input)
 }
 
 // NewModel creates a new chat Model with default spinner and loading state.
-func NewModel(keys keymap.KeyMap) Model {
+// userID is the logged-in user's ID, used to render own messages differently.
+func NewModel(keys keymap.KeyMap, userID string) Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = styles.SpinnerStyle
@@ -42,6 +45,7 @@ func NewModel(keys keymap.KeyMap) Model {
 		loading:   true,
 		spinner:   sp,
 		keys:      keys,
+		userID:    userID,
 		userCache: make(map[string]api.User),
 	}
 }
@@ -74,7 +78,7 @@ func (m *Model) LoadPosts(channelID, channelName string, postList api.PostList, 
 	m.posts = posts
 
 	// Render posts content into the viewport.
-	content := RenderPosts(m.posts, m.userCache, m.width)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -88,7 +92,7 @@ func (m *Model) AppendPost(post api.Post) {
 	atBottom := m.viewport.AtBottom()
 	m.posts = append(m.posts, post)
 
-	content := RenderPosts(m.posts, m.userCache, m.width)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
 	m.viewport.SetContent(content)
 
 	if atBottom {
@@ -103,7 +107,7 @@ func (m *Model) UpdatePost(post api.Post) {
 		if p.ID == post.ID {
 			atBottom := m.viewport.AtBottom()
 			m.posts[i] = post
-			content := RenderPosts(m.posts, m.userCache, m.width)
+			content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
 			m.viewport.SetContent(content)
 			if atBottom {
 				m.viewport.GotoBottom()
@@ -168,10 +172,10 @@ func (m *Model) PrependPosts(postList api.PostList, page int) {
 	m.posts = append(newPosts, m.posts...)
 
 	// Measure how many lines the prepended posts add.
-	newContent := RenderPosts(newPosts, m.userCache, m.width)
+	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width)
 	addedLines := strings.Count(newContent, "\n") + 1
 
-	content := RenderPosts(m.posts, m.userCache, m.width)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
 	m.viewport.SetContent(content)
 
 	// Re-anchor: keep the user's reading position stable.
@@ -198,7 +202,7 @@ func (m *Model) SetSize(width, height int) {
 	m.viewport.Height = vpHeight
 
 	if len(m.posts) > 0 {
-		content := RenderPosts(m.posts, m.userCache, width)
+		content := RenderPosts(m.posts, m.userCache, m.userID, width)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -236,19 +240,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
+		case key.Matches(msg, m.keys.JumpToTop):
+			if m.pendingG {
+				m.viewport.GotoTop()
+				m.pendingG = false
+			} else {
+				m.pendingG = true
+			}
 		case key.Matches(msg, m.keys.ScrollUp):
+			m.pendingG = false
 			m.viewport.HalfViewUp()
 		case key.Matches(msg, m.keys.ScrollDown):
+			m.pendingG = false
 			m.viewport.HalfViewDown()
 		case key.Matches(msg, m.keys.PageUp):
+			m.pendingG = false
 			m.viewport.ViewUp()
 		case key.Matches(msg, m.keys.PageDown):
+			m.pendingG = false
 			m.viewport.ViewDown()
 		case key.Matches(msg, m.keys.JumpToBottom):
+			m.pendingG = false
 			m.viewport.GotoBottom()
 		case key.Matches(msg, m.keys.Up):
+			m.pendingG = false
 			m.viewport.LineUp(1)
 		case key.Matches(msg, m.keys.Down):
+			m.pendingG = false
 			m.viewport.LineDown(1)
 		}
 

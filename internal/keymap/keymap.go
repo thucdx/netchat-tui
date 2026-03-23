@@ -14,6 +14,7 @@ type KeyMap struct {
 	Up           key.Binding // k or up-arrow
 	Down         key.Binding // j or down-arrow
 	JumpToBottom key.Binding // G — jump to latest messages in chat
+	JumpToTop    key.Binding // gg — jump to top
 
 	// Select opens the highlighted channel. Only active when sidebar is focused.
 	Select key.Binding
@@ -55,6 +56,10 @@ func DefaultKeyMap() KeyMap {
 		JumpToBottom: key.NewBinding(
 			key.WithKeys("G"),
 			key.WithHelp("G", "jump to latest"),
+		),
+		JumpToTop: key.NewBinding(
+			key.WithKeys("g"),
+			key.WithHelp("gg", "jump to top"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys("enter"),
@@ -109,13 +114,13 @@ func DefaultKeyMap() KeyMap {
 
 // ShortHelp returns the bindings shown in the mini help bar.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.JumpToBottom, k.ScrollUp, k.ScrollDown, k.FocusInput, k.Quit}
+	return []key.Binding{k.JumpToTop, k.JumpToBottom, k.ScrollUp, k.ScrollDown, k.FocusInput, k.Quit}
 }
 
 // FullHelp returns all bindings for the full help page.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.JumpToBottom, k.Select},
+		{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.Select},
 		{k.FocusInput, k.FocusSidebar, k.NextPanel},
 		{k.ScrollUp, k.ScrollDown, k.PageUp, k.PageDown},
 		{k.Send, k.Newline, k.Quit, k.Help},

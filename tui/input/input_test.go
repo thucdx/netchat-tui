@@ -215,3 +215,25 @@ func TestSendTrimsWhitespace(t *testing.T) {
 		t.Errorf("Text = %q, want %q", sendMsg.Text, "trimmed")
 	}
 }
+
+// TestSetSizeSubtractsBorderFromHeight verifies that SetSize(w, h) sets the
+// textarea inner height to h-2 (top and bottom border rows are excluded).
+func TestSetSizeSubtractsBorderFromHeight(t *testing.T) {
+	m := NewModel(keymap.DefaultKeyMap())
+	m.SetSize(80, 5)
+	// The textarea height should be 5 - 2 = 3.
+	got := m.textarea.Height()
+	if got != 3 {
+		t.Errorf("textarea.Height() = %d after SetSize(80, 5), want 3", got)
+	}
+}
+
+// TestSetSizeHeightClampedToOne ensures SetSize never sets a zero or negative height.
+func TestSetSizeHeightClampedToOne(t *testing.T) {
+	m := NewModel(keymap.DefaultKeyMap())
+	m.SetSize(80, 1) // height=1, height-2 = -1 → clamped to 1
+	got := m.textarea.Height()
+	if got < 1 {
+		t.Errorf("textarea.Height() = %d after SetSize(80, 1), want >= 1", got)
+	}
+}
