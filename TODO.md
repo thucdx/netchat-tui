@@ -4,13 +4,23 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked/es
 
 ## Phase Gate Checklist — ALL PHASES COMPLETE
 
-Phases 1–8 gated 2026-03-23.
+Phases 1–8 gated 2026-03-23. Post-ship fixes gated 2026-03-23.
 
 - [x] Coder: all phase tasks implemented (builder-ws + builder-ux)
-- [x] Tester: all phase tests pass — 31 tests, 9 packages, 0 failures (qa)
+- [x] Tester: all phase tests pass — 17 sidebar tests, 9 packages, 0 failures (qa)
 - [x] Security: no High severity findings open (S2–S9 all resolved)
-- [x] Reviewer: no blocking issues open (Phase 7/8 gate approved by reviewer)
+- [x] Reviewer: no blocking issues open (sidebar refactor approved by reviewer)
 - [x] Orchestrator: TODO.md updated
+
+## Post-ship fixes (2026-03-23)
+
+- [x] Sidebar shows flat recency list (mixed DM + channels, top N by LastPostAt)
+- [x] Removed section headers — icons indicate channel type
+- [x] Ctrl+U / Ctrl+D half-page scroll added to sidebar
+- [x] Default sidebar limit raised from 50 → 200
+- [x] Deleted channels filtered from sidebar
+- [x] DM display name falls back to user ID when user not in cache
+- [x] E2E sidebar tests added (auto-skip without credentials)
 
 ---
 
@@ -84,9 +94,9 @@ Phases 1–8 gated 2026-03-23.
 ## Testing — Phase 2 (API Layer)
 
 - [x] `models_test.go` — JSON unmarshal for Channel types, double-unmarshal for WS posted event
-- [ ] `teams_test.go` (integration) — GetTeamsForUser returns at least one team
-- [ ] `channels_test.go` (integration) — GetChannelsForUser, GetChannelMembersForUser
-- [ ] `channels_test.go` — mute detection logic (mark_unread == "mention")
+- [x] `teams_test.go` (integration) — GetTeamsForUser returns at least one team
+- [x] `channels_test.go` (integration) — GetChannelsForUser, GetChannelMembersForUser
+- [x] `channels_test.go` — mute detection logic (mark_unread == "mention")
 - [x] `posts_test.go` (integration) — GetPostsForChannel order, CreatePost
 - [x] `websocket_test.go` — auth challenge JSON, posted event parse, unknown event no panic
 
@@ -122,7 +132,7 @@ Phases 1–8 gated 2026-03-23.
 ## Phase 8 — Polish and Edge Cases
 
 - [x] DM display name resolution — batch fetch via POST /api/v4/users/ids, cache
-- [~] Mute detection — parse preferences, mark IsMuted per channel (handled via notify_props in ChannelMember)
+- [x] Mute detection — parse preferences, mark IsMuted per channel (handled via notify_props in ChannelMember)
 - [x] Pagination — load more posts when viewport scrolled to top
 - [x] Mark-as-read — call view endpoint on channel switch / viewport at bottom
 - [x] Terminal resize — re-render on WindowSizeMsg, propagate to all sub-models
