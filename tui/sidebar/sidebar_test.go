@@ -244,7 +244,7 @@ func TestSortedByRecency(t *testing.T) {
 	}
 }
 
-// 9b. Ctrl+D scrolls viewOffset down by half-page without moving cursor.
+// 9b. Ctrl+D scrolls viewOffset down by half-page; cursor clamps to new window top.
 func TestCtrlDScrollsDown(t *testing.T) {
 	m := newModel()
 	m.SetHeight(4)
@@ -254,13 +254,13 @@ func TestCtrlDScrollsDown(t *testing.T) {
 	// viewOffset starts at 0, cursor at 0.
 	m = pressKey(m, keyCtrlD())
 
-	// half-page = 4/2 = 2
+	// half-page = 4/2 = 2; viewOffset moves to 2.
 	if m.viewOffset != 2 {
 		t.Errorf("after ctrl+d: expected viewOffset=2, got %d", m.viewOffset)
 	}
-	// cursor should not have moved
-	if m.cursor != 0 {
-		t.Errorf("after ctrl+d: cursor should not move, got %d", m.cursor)
+	// cursor was at 0, which is now below viewOffset=2, so it clamps to 2.
+	if m.cursor != 2 {
+		t.Errorf("after ctrl+d: cursor should clamp to viewOffset=2, got %d", m.cursor)
 	}
 }
 
@@ -281,25 +281,36 @@ func TestCtrlDClampsAtBottom(t *testing.T) {
 	}
 }
 
-// 9d. Ctrl+U scrolls viewOffset up by half-page.
+// 9d. Ctrl+U scrolls viewOffset up by half-page; cursor clamps to new window bottom.
 func TestCtrlUScrollsUp(t *testing.T) {
 	m := newModel()
 	m.SetHeight(4)
 	items := makeItems(10, "O")
 	m.SetItems(items)
 
-	// Move offset down first.
+	// Move offset and cursor down first.
 	m = pressKey(m, keyCtrlD())
 	m = pressKey(m, keyCtrlD())
-	// viewOffset should be 4 (2 half-pages of 2).
+	// viewOffset=4, cursor=4 (clamped to viewOffset after each Ctrl+D).
 	if m.viewOffset != 4 {
 		t.Fatalf("setup: expected viewOffset=4, got %d", m.viewOffset)
 	}
 
-	// Now scroll up one half-page.
+	// Move cursor to bottom of visible window (index 7 = viewOffset+height-1).
+	for m.cursor < m.viewOffset+m.height-1 {
+		m = pressKey(m, keyJ())
+	}
+	if m.cursor != 7 {
+		t.Fatalf("setup: expected cursor=7, got %d", m.cursor)
+	}
+
+	// Scroll up one half-page: viewOffset → 2, cursor at 7 > 2+4-1=5, clamps to 5.
 	m = pressKey(m, keyCtrlU())
 	if m.viewOffset != 2 {
 		t.Errorf("after ctrl+u: expected viewOffset=2, got %d", m.viewOffset)
+	}
+	if m.cursor != 5 {
+		t.Errorf("after ctrl+u: cursor should clamp to viewOffset+height-1=5, got %d", m.cursor)
 	}
 }
 

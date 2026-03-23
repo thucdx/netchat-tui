@@ -36,7 +36,7 @@ type ChannelItem struct {
 type Model struct {
 	allItems   []ChannelItem     // full sorted list of all channels
 	items      []ChannelItem     // top-limit slice of allItems (displayed)
-	limit      int               // max channels to show (default 50)
+	limit      int               // max channels to show (default 200)
 	cursor     int               // index into items
 	selected   int               // index into items (-1 = none)
 	viewOffset int               // virtual scroll: first visible item index
@@ -230,6 +230,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.viewOffset < 0 {
 				m.viewOffset = 0
 			}
+			// Keep cursor inside the visible window.
+			if m.cursor > m.viewOffset+m.height-1 {
+				m.cursor = m.viewOffset + m.height - 1
+			}
 
 		case key.Matches(msg, m.keys.ScrollDown):
 			maxOffset := len(m.items) - m.height
@@ -239,6 +243,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewOffset += m.height / 2
 			if m.viewOffset > maxOffset {
 				m.viewOffset = maxOffset
+			}
+			// Keep cursor inside the visible window.
+			if m.cursor < m.viewOffset {
+				m.cursor = m.viewOffset
 			}
 
 		case key.Matches(msg, m.keys.Select):
