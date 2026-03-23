@@ -1,6 +1,11 @@
 package tui
 
 import (
+	"context"
+	"encoding/json"
+	"log"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,12 +42,34 @@ type postsReadyMsg struct {
 
 type postSentMsg struct{ post api.Post }
 
+// morePostsReadyMsg carries older posts fetched for pagination.
+type morePostsReadyMsg struct {
+	channelID string
+	posts     api.PostList
+	page      int
+}
+
+// dmOtherUserID extracts the other user's ID from a DM channel name.
+// DM channel names in Mattermost use the format "userid1__userid2".
+func dmOtherUserID(channelName, myUserID string) string {
+	parts := strings.SplitN(channelName, "__", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	if parts[0] == myUserID {
+		return parts[1]
+	}
+	return parts[0]
+}
+
 // AppModel is the root Bubbletea model.
 type AppModel struct {
 	layout  Layout
 	focus   FocusPane
 	keys    keymap.KeyMap
 	api     *api.Client  // nil when running without a real backend
+	ws      *api.WSClient // nil until WS connects
+	wsCancel context.CancelFunc // cancels WS reconnect loop
 	userID  string
 	teamID  string
 	ready   bool
@@ -145,7 +172,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case teamLoadedMsg:
 		m.teamID = msg.teamID
 		if m.api != nil {
-			return m, m.cmdLoadChannels()
+			return m, tea.Batch(m.cmdLoadChannels(), m.cmdStartWS())
 		}
 		return m, nil
 
@@ -208,6 +235,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebar.IncrementUnread(msg.Post.ChannelID)
 		}
 		return m, nil
+
+	// ── WebSocket event dispatch ─────────────────────────────────────────────
+
+	case messages.WSEventMsg:
+		cmd := m.handleWSEvent(msg.Event)
+		// Keep listening for next event.
+		return m, tea.Batch(cmd, m.waitForWSEvent())
 	}
 
 	// Propagate spinner ticks and other internal messages to sub-models.
@@ -356,4 +390,120 @@ func (m AppModel) cmdSendPost(channelID, text string) tea.Cmd {
 		}
 		return postSentMsg{post: post}
 	}
+}
+
+// ── WebSocket commands ────────────────────────────────────────────────────────
+
+// cmdStartWS creates a WSClient from the HTTP client and connects with retry.
+// On success it returns a waitForWSEvent Cmd to start the event pump.
+func (m *AppModel) cmdStartWS() tea.Cmd {
+	return func() tea.Msg {
+		ws, err := api.NewWSClientFromClient(m.api)
+		if err != nil {
+			log.Printf("ws: failed to create client: %v", err)
+			return nil
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		m.wsCancel = cancel
+
+		if err := api.ConnectWithRetry(ctx, ws); err != nil {
+			log.Printf("ws: connect failed: %v", err)
+			cancel()
+			return nil
+		}
+		m.ws = ws
+
+		// Return the first waitForWSEvent to kick off the pump.
+		return messages.WSEventMsg{Event: api.WSEvent{Event: "_connected"}}
+	}
+}
+
+// waitForWSEvent blocks until the next event arrives on the WS channel.
+func (m AppModel) waitForWSEvent() tea.Cmd {
+	ws := m.ws
+	if ws == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		event, ok := <-ws.Events
+		if !ok {
+			return nil // channel closed
+		}
+		return messages.WSEventMsg{Event: event}
+	}
+}
+
+// handleWSEvent processes a single WS event and returns a Cmd (if any).
+func (m *AppModel) handleWSEvent(event api.WSEvent) tea.Cmd {
+	switch event.Event {
+	case "posted":
+		return m.handlePosted(event)
+	case "post_edited":
+		return m.handlePostEdited(event)
+	case "channel_viewed":
+		m.handleChannelViewed(event)
+	}
+	return nil
+}
+
+// handlePosted double-unmarshals the post from event.Data["post"] (JSON string).
+func (m *AppModel) handlePosted(event api.WSEvent) tea.Cmd {
+	post, ok := unmarshalPostFromEvent(event)
+	if !ok {
+		return nil
+	}
+
+	// Skip own posts — they're already shown via postSentMsg.
+	if post.UserID == m.userID {
+		return nil
+	}
+
+	activeID := m.chat.ChannelID()
+	if post.ChannelID == activeID {
+		m.chat.AppendPost(post)
+	} else {
+		// Increment unread for both normal and muted channels.
+		m.sidebar.IncrementUnread(post.ChannelID)
+	}
+	return nil
+}
+
+// handlePostEdited double-unmarshals the post and updates the chat if active.
+func (m *AppModel) handlePostEdited(event api.WSEvent) tea.Cmd {
+	post, ok := unmarshalPostFromEvent(event)
+	if !ok {
+		return nil
+	}
+
+	if post.ChannelID == m.chat.ChannelID() {
+		m.chat.UpdatePost(post)
+	}
+	return nil
+}
+
+// handleChannelViewed clears unread badge for the viewed channel.
+func (m *AppModel) handleChannelViewed(event api.WSEvent) {
+	channelID, _ := event.Data["channel_id"].(string)
+	if channelID != "" {
+		m.sidebar.ClearUnread(channelID)
+	}
+}
+
+// unmarshalPostFromEvent extracts and JSON-decodes a Post from event.Data["post"].
+// Mattermost sends the post as a JSON string inside the Data map.
+func unmarshalPostFromEvent(event api.WSEvent) (api.Post, bool) {
+	raw, ok := event.Data["post"]
+	if !ok {
+		return api.Post{}, false
+	}
+	postStr, ok := raw.(string)
+	if !ok {
+		return api.Post{}, false
+	}
+	var post api.Post
+	if err := json.Unmarshal([]byte(postStr), &post); err != nil {
+		return api.Post{}, false
+	}
+	return post, true
 }

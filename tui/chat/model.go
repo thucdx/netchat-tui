@@ -107,6 +107,11 @@ func (m *Model) UpdatePost(post api.Post) {
 	}
 }
 
+// ChannelID returns the ID of the currently displayed channel.
+func (m Model) ChannelID() string {
+	return m.channelID
+}
+
 // SetSize updates the viewport dimensions.
 func (m *Model) SetSize(width, height int) {
 	m.width = width
