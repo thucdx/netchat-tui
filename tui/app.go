@@ -407,25 +407,33 @@ func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 			}
 		}
 
-		// Collect user IDs from DM channels for batch display-name resolution.
-		dmUserIDs := make(map[string]struct{})
+		// Collect user IDs from DM and Group channels for batch display-name resolution.
+		// G channels encode all participant IDs in the channel name as uid1__uid2__uid3.
+		userIDsToFetch := make(map[string]struct{})
 		for _, ch := range allChannels {
-			if ch.Type == "D" {
+			switch ch.Type {
+			case "D":
 				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
-					dmUserIDs[otherID] = struct{}{}
+					userIDsToFetch[otherID] = struct{}{}
+				}
+			case "G":
+				for _, uid := range strings.Split(ch.Name, "__") {
+					if uid != "" && uid != userID {
+						userIDsToFetch[uid] = struct{}{}
+					}
 				}
 			}
 		}
 
-		dmUserCache := make(map[string]api.User)
-		if len(dmUserIDs) > 0 {
-			ids := make([]string, 0, len(dmUserIDs))
-			for id := range dmUserIDs {
+		userCache := make(map[string]api.User)
+		if len(userIDsToFetch) > 0 {
+			ids := make([]string, 0, len(userIDsToFetch))
+			for id := range userIDsToFetch {
 				ids = append(ids, id)
 			}
 			if users, err := apiClient.GetUsersByIDs(ids); err == nil {
 				for _, u := range users {
-					dmUserCache[u.ID] = u
+					userCache[u.ID] = u
 				}
 			}
 			// On error, fall back to channel DisplayName (no crash).
@@ -435,11 +443,26 @@ func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 		for _, ch := range allChannels {
 			mb := memberByChannelID[ch.ID]
 			displayName := ch.DisplayName
-			if ch.Type == "D" {
+			switch ch.Type {
+			case "D":
 				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
-					if u, ok := dmUserCache[otherID]; ok && u.Username != "" {
+					if u, ok := userCache[otherID]; ok && u.Username != "" {
 						displayName = u.Username
 					}
+				}
+			case "G":
+				// Build "user1, user2, ..." from participants excluding self.
+				var names []string
+				for _, uid := range strings.Split(ch.Name, "__") {
+					if uid == "" || uid == userID {
+						continue
+					}
+					if u, ok := userCache[uid]; ok && u.Username != "" {
+						names = append(names, u.Username)
+					}
+				}
+				if len(names) > 0 {
+					displayName = strings.Join(names, ", ")
 				}
 			}
 			item := sidebar.ChannelItem{
