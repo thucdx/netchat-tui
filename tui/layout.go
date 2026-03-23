@@ -3,20 +3,25 @@ package tui
 import "github.com/thucdx/netchat-tui/tui/styles"
 
 // Layout holds the computed dimensions for all panes.
-// Recomputed on every tea.WindowSizeMsg.
+// Recomputed on every tea.WindowSizeMsg or sidebar resize.
 type Layout struct {
 	TotalWidth   int
 	TotalHeight  int
-	SidebarWidth int // always styles.SidebarWidth (28) — includes border
+	SidebarWidth int // dynamic; includes border
 	ChatWidth    int // TotalWidth - SidebarWidth
 	InputHeight  int // always styles.InputHeight (3) — includes border
 	ChatHeight   int // TotalHeight - InputHeight
 }
 
-// NewLayout computes the Layout from the given terminal dimensions.
-// Enforces minimum sizes so values are always positive.
-func NewLayout(width, height int) Layout {
-	chatWidth := width - styles.SidebarWidth
+// NewLayout computes the Layout from the given terminal dimensions and sidebar
+// width. sidebarWidth includes the right border. Enforces minimum sizes so
+// values are always positive.
+func NewLayout(width, height, sidebarWidth int) Layout {
+	if sidebarWidth <= 0 {
+		sidebarWidth = styles.SidebarWidth
+	}
+
+	chatWidth := width - sidebarWidth
 	if chatWidth < 1 {
 		chatWidth = 1
 	}
@@ -29,7 +34,7 @@ func NewLayout(width, height int) Layout {
 	return Layout{
 		TotalWidth:   width,
 		TotalHeight:  height,
-		SidebarWidth: styles.SidebarWidth,
+		SidebarWidth: sidebarWidth,
 		ChatWidth:    chatWidth,
 		InputHeight:  styles.InputHeight,
 		ChatHeight:   chatHeight,

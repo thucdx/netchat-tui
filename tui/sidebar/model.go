@@ -10,6 +10,7 @@ import (
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
 	"github.com/thucdx/netchat-tui/internal/messages"
+	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
 // defaultLimit is the maximum number of channels shown in the sidebar.
@@ -28,36 +29,52 @@ type ChannelItem struct {
 	Channel     api.Channel
 	Member      api.ChannelMember // unread counts, notify props
 	DisplayName string            // resolved name (DM → "@username", else DisplayName)
+	ContactName string            // first+last name; empty for public/private channels
+	AccountName string            // username; empty for public/private channels
 	UnreadCount int64
 	IsMuted     bool
 }
 
 // Model is the sidebar Bubbletea sub-model.
 type Model struct {
-	allItems   []ChannelItem     // full sorted list of all channels
-	items      []ChannelItem     // top-limit slice of allItems (displayed)
-	limit      int               // max channels to show (default 200)
-	cursor     int               // index into items
-	selected   int               // index into items (-1 = none)
-	viewOffset int               // virtual scroll: first visible item index
-	height     int               // visible rows available (set by AppModel on resize)
-	pendingG   bool              // true after first 'g' press (for gg jump-to-top)
-	keys       keymap.KeyMap
-	userID     string            // current user ID (to resolve DM names)
-	userCache  map[string]api.User
+	allItems       []ChannelItem     // full sorted list of all channels
+	items          []ChannelItem     // top-limit slice of allItems (displayed)
+	limit          int               // max channels to show (default 200)
+	cursor         int               // index into items
+	selected       int               // index into items (-1 = none)
+	viewOffset     int               // virtual scroll: first visible item index
+	height         int               // visible rows available (set by AppModel on resize)
+	width          int               // total sidebar width including border (set by AppModel)
+	pendingG       bool              // true after first 'g' press (for gg jump-to-top)
+	keys           keymap.KeyMap
+	userID         string            // current user ID (to resolve DM names)
+	userCache      map[string]api.User
+	search         searchState       // search mode state (zero value = inactive)
+	useContactName bool              // true = show first+last name; false = show username
 }
 
 // NewModel returns an empty sidebar model.
 func NewModel(keys keymap.KeyMap, userID string) Model {
 	return Model{
-		limit:     defaultLimit,
-		cursor:    0,
-		selected:  -1,
-		height:    20,
-		keys:      keys,
-		userID:    userID,
-		userCache: make(map[string]api.User),
+		limit:          defaultLimit,
+		cursor:         0,
+		selected:       -1,
+		height:         20,
+		width:          styles.SidebarWidth,
+		keys:           keys,
+		userID:         userID,
+		userCache:      make(map[string]api.User),
+		useContactName: true,
 	}
+}
+
+// SetWidth updates the total sidebar width (including border).
+// Called by AppModel on resize or drag.
+func (m *Model) SetWidth(w int) {
+	if w < 10 {
+		w = 10
+	}
+	m.width = w
 }
 
 // visibleHeight returns the number of item rows the view can actually render.
@@ -143,17 +160,74 @@ func (m *Model) sortAndRebuild() {
 func (m *Model) SetItems(items []ChannelItem) {
 	for i := range items {
 		items[i].DisplayName = stripANSI(items[i].DisplayName)
+		items[i].ContactName = stripANSI(items[i].ContactName)
+		items[i].AccountName = stripANSI(items[i].AccountName)
 	}
 	m.allItems = items
 	m.cursor = 0
 	m.selected = -1
 	m.viewOffset = 0
-	m.sortAndRebuild()
+	m.applyDisplayNames()
 }
 
 // Items returns the currently displayed channel items (top-limit after sort).
 func (m Model) Items() []ChannelItem {
 	return m.items
+}
+
+// UpsertItem adds or updates a channel item in allItems, then re-sorts.
+// Used when a new DM or joined channel should appear in the sidebar.
+func (m *Model) UpsertItem(item ChannelItem) {
+	item.DisplayName = stripANSI(item.DisplayName)
+	item.ContactName = stripANSI(item.ContactName)
+	item.AccountName = stripANSI(item.AccountName)
+	for i := range m.allItems {
+		if m.allItems[i].Channel.ID == item.Channel.ID {
+			m.allItems[i] = item
+			m.applyDisplayNames()
+			return
+		}
+	}
+	m.allItems = append(m.allItems, item)
+	m.applyDisplayNames()
+}
+
+// ToggleDisplayName flips between contact name and account name display.
+func (m *Model) ToggleDisplayName() {
+	m.useContactName = !m.useContactName
+	m.applyDisplayNames()
+}
+
+// UseContactName reports whether contact name mode is active.
+func (m Model) UseContactName() bool {
+	return m.useContactName
+}
+
+// applyDisplayNames updates DisplayName for all DM/group items based on the
+// current mode, then re-sorts and rebuilds the displayed list.
+func (m *Model) applyDisplayNames() {
+	for i := range m.allItems {
+		item := &m.allItems[i]
+		if item.AccountName == "" {
+			continue // public/private channel — DisplayName already set correctly
+		}
+		if m.useContactName && item.ContactName != "" {
+			item.DisplayName = item.ContactName
+		} else {
+			item.DisplayName = item.AccountName
+		}
+	}
+	m.sortAndRebuild()
+}
+
+// ExitSearch exits search mode. Safe to call when not searching.
+func (m *Model) ExitSearch() {
+	m.exitSearch()
+}
+
+// IsSearching reports whether the sidebar is currently in search mode.
+func (m Model) IsSearching() bool {
+	return m.search.active
 }
 
 // SetHeight updates the visible row count (called on WindowSizeMsg).
@@ -204,6 +278,17 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Search mode intercepts all key events when active.
+		if m.search.active {
+			return m.updateSearch(msg)
+		}
+
+		// Enter search mode.
+		if key.Matches(msg, m.keys.Search) {
+			m.enterSearch()
+			return m, nil
+		}
+
 		switch {
 		case key.Matches(msg, m.keys.JumpToTop):
 			if m.pendingG {

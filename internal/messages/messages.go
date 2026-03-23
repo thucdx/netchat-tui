@@ -29,3 +29,29 @@ type LoadMorePostsMsg struct {
 
 // WSEventMsg wraps a raw WebSocket event for the Bubbletea update loop.
 type WSEventMsg struct{ Event api.WSEvent }
+
+// ImagesReadyMsg carries rendered terminal-image strings keyed by file ID.
+// It is dispatched when background image downloads complete.
+type ImagesReadyMsg struct {
+	// Images maps Mattermost file IDs to rendered ANSI image strings.
+	Images map[string]string
+}
+
+// TriggerSearchMsg is emitted by the sidebar when the search query reaches
+// ≥3 characters and an API search should be fired.
+type TriggerSearchMsg struct{ Query string }
+
+// SearchResultsMsg carries API search results back to the sidebar.
+type SearchResultsMsg struct {
+	Query    string
+	Users    []api.User
+	Channels []api.Channel
+}
+
+// CreateDirectChannelMsg is emitted by the sidebar when the user picks a
+// user from search results to start a new DM.
+type CreateDirectChannelMsg struct{ UserID string }
+
+// JoinChannelMsg is emitted by the sidebar when the user confirms joining
+// a public channel found via search.
+type JoinChannelMsg struct{ ChannelID string }

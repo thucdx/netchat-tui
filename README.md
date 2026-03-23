@@ -1,13 +1,50 @@
 # netchat-tui
 
-A terminal UI client for netchat.viettel.vn (Mattermost v4), built with [Bubbletea](https://github.com/charmbracelet/bubbletea).
+A keyboard-driven terminal UI client for **netchat.viettel.vn** (Mattermost v4), built in Go with [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
+
+```
+┌─────────────────┬──────────────────────────────────────────┐
+│ @ Alice Smith   │ @ Alice Smith                            │
+│ # general    3  │ ──────────────────────────────────────── │
+│ ⊕ Team Alpha   │ Alice Smith  10:30                       │
+│ # random        │   Hello everyone! How's it going?        │
+│ ■ ops-team      │                                          │
+│ @ Bob Nguyen    │ You ▶  10:31                             │
+│ # announcements │   Doing great, thanks!                   │
+│ ø quietchan     │                                          │
+│   ↕ 8/42        ├──────────────────────────────────────────┤
+└─────────────────┘ > type a message and press Enter         │
+                   └──────────────────────────────────────────┘
+```
+
+---
+
+## Features
+
+- **Real-time messaging** via WebSocket — new messages appear instantly without polling
+- **All channel types** in one unified sidebar: DMs, Group messages, Public, and Private channels
+- **Unread badges** per channel; automatically cleared when you open a channel
+- **Muted channel** indicators — distinct icon and dimmed style
+- **Markdown rendering** powered by [glamour](https://github.com/charmbracelet/glamour) — code blocks, bold, italics, lists, and more
+- **Image & file previews** — inline terminal art for images, placeholder text for other files
+- **Message editing** — `(edited)` marker on server-edited posts
+- **Infinite scroll** — scroll to the top of any channel to page in older messages
+- **Sidebar search** — fuzzy-search joined channels/DMs and discover new ones via the API; open a new DM or join a public channel directly from the search results
+- **Display name toggle** — switch between contact name (first + last name) and account name (username) for all authors and channel labels at once
+- **Resizable sidebar** — drag the right border left/right with the mouse
+- **Vim-style navigation** — `j/k`, `gg`, `G`, `Ctrl+U/D`, `Ctrl+B/F` throughout
+
+---
 
 ## Requirements
 
-- Go 1.21 or later
-- A valid account on netchat.viettel.vn
+- **Go 1.22+**
+- A valid account on **netchat.viettel.vn**
+- A terminal with true-color support (iTerm2, Alacritty, kitty, Windows Terminal, etc.)
 
-## Build and run
+---
+
+## Build & run
 
 ```bash
 git clone https://github.com/thucdx/netchat-tui
@@ -15,85 +52,138 @@ cd netchat-tui
 go run .
 ```
 
-Or build a binary:
+Or build a standalone binary:
 
 ```bash
 go build -o netchat-tui .
 ./netchat-tui
 ```
 
-## First launch — getting your token
+On first launch you will be taken to the **authentication screen** (see below). Subsequent launches go straight to the chat UI using the saved token.
 
-On first run you will see a token prompt.
+---
 
-1. Log in to netchat.viettel.vn in a browser.
-2. Go to **Profile → Security → Personal Access Tokens** and create a new token.
-   (Or open DevTools → Network, copy the `Authorization: Bearer <value>` from any request.)
-3. Paste the token into the prompt and press **Enter**.
+## Authentication — getting your token
 
-The token is saved to `~/.config/netchat-tui/config.json` (mode `0600`) and reused on subsequent launches. To switch accounts, delete this file and restart.
+netchat-tui authenticates with a **Personal Access Token** (a long-lived bearer token). There are two ways to obtain one:
+
+### Option A — Personal Access Tokens page (recommended)
+
+1. Log in to [netchat.viettel.vn](https://netchat.viettel.vn) in your browser.
+2. Click your avatar → **Profile** → **Security** → **Personal Access Tokens**.
+3. Click **Create Token**, give it any name (e.g. `netchat-tui`), and copy the token value.
+
+> **Note:** If the Personal Access Tokens page is missing, the feature may be disabled on your server — use Option B instead.
+
+### Option B — Copy from browser DevTools
+
+1. Log in to [netchat.viettel.vn](https://netchat.viettel.vn) in your browser.
+2. Open DevTools (`F12`) → **Network** tab.
+3. Reload the page or send any message.
+4. Click any API request, look at its **Request Headers**, and copy the value after `Authorization: Bearer `.
+
+### Pasting the token
+
+When netchat-tui starts without a saved token it shows a prompt:
+
+```
+Paste MMAUTHTOKEN here…
+```
+
+Paste your token (it is hidden as `•••`) and press **Enter**. The app validates it against the server; on success the token is saved to `~/.config/netchat-tui/config.json` (mode `0600`) and you will not be asked again.
+
+To **switch accounts**, delete the config file and restart:
+
+```bash
+rm ~/.config/netchat-tui/config.json
+```
 
 ---
 
 ## Layout
 
-```
-┌─────────────┬──────────────────────────────┐
-│  Sidebar    │  Chat pane                   │
-│             │                              │
-│  DIRECT     │  #general                    │
-│  @ Alice    │  ──────────────────────────  │
-│  @ Bob      │  Alice  10:30                │
-│             │    Hello world               │
-│  CHANNELS   │                              │
-│  # general  │  Bob  10:31                  │
-│  # random   │    Hi there!                 │
-│             │                              │
-│             ├──────────────────────────────┤
-│             │  > type a message here       │
-└─────────────┴──────────────────────────────┘
-```
+The UI is three panels:
+
+| Panel | Description |
+|-------|-------------|
+| **Sidebar** (left) | Scrollable channel list, ordered by most recent activity. Unread badge on the right. |
+| **Chat pane** (top-right) | Message history with author headers, timestamps, and markdown rendering. |
+| **Input** (bottom-right) | Multi-line message composer. |
+
+Focus cycles with `Tab` or jump directly with `i`/`a` (input) and `Esc` (sidebar).
+
+### Sidebar channel icons
+
+| Icon | Meaning |
+|------|---------|
+| `#` | Public channel |
+| `■` | Private channel |
+| `@` | Direct message |
+| `⊕` | Group message |
+| `⊘` | Muted public channel |
+| `□` | Muted private channel |
+| `ø` | Muted DM |
+| `⊖` | Muted group |
 
 ---
 
 ## Keybindings
 
-### Focus / navigation
+### Focus
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Cycle focus: Sidebar → Chat → Input → Sidebar |
-| `i` or `a` | Jump directly to message input |
+| `Tab` | Cycle focus: Sidebar → Chat → Input |
+| `i` or `a` | Jump to message input |
 | `Esc` | Return focus to sidebar (also dismisses error banner) |
 
-### Sidebar (channel list)
-
-Channels are ordered by most recent activity (flat mixed list — icons indicate type).
+### Sidebar — channel list
 
 | Key | Action |
 |-----|--------|
-| `j` or `↓` | Move cursor down |
-| `k` or `↑` | Move cursor up |
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
 | `gg` | Jump to top of list |
 | `G` | Jump to bottom of list |
 | `Ctrl+U` | Scroll up half page |
 | `Ctrl+D` | Scroll down half page |
 | `Enter` | Open highlighted channel |
+| `/` or `Ctrl+F` | Open search bar |
+| `n` | Toggle display name (contact name ↔ username) |
+| `q` | Quit |
 
-### Chat pane (message history)
+### Sidebar — search mode
+
+Triggered by `/` or `Ctrl+F`. The sidebar is replaced by a live results list.
 
 | Key | Action |
 |-----|--------|
+| _(type)_ | Build query (results appear after 3 characters) |
+| `↑` / `↓` | Move result cursor |
+| `Enter` | Open existing channel / start new DM / join channel |
+| `Backspace` | Delete last character |
+| `Esc` | Exit search, return to channel list |
+
+When selecting a **new public channel**, a confirmation line appears:
+```
+Join #channel-name? [y/N]
+```
+Press `y` or `Enter` to confirm, any other key to cancel.
+
+### Chat pane
+
+| Key | Action |
+|-----|--------|
+| `k` / `↑` | Scroll up one line |
+| `j` / `↓` | Scroll down one line |
 | `Ctrl+U` | Scroll up half page |
 | `Ctrl+D` | Scroll down half page |
 | `Ctrl+B` | Page up |
 | `Ctrl+F` | Page down |
-| `k` or `↑` | Scroll up one line |
-| `j` or `↓` | Scroll down one line |
-| `gg` | Scroll to oldest message |
+| `gg` | Jump to oldest message |
 | `G` | Jump to latest message |
 
-Scrolling to the top automatically loads older messages.
+> Scrolling to the **very top** automatically loads the previous page of messages.
 
 ### Message input
 
@@ -102,19 +192,32 @@ Scrolling to the top automatically loads older messages.
 | `Enter` | Send message |
 | `Shift+Enter` | Insert newline |
 
-### App
+### Global
 
 | Key | Action |
 |-----|--------|
-| `q` (sidebar focused) | Quit |
 | `Ctrl+C` | Quit from anywhere |
-| `?` | Show keybinding help |
+| `?` | Show keybinding help overlay |
+
+---
+
+## Display name toggle
+
+Press `n` while the sidebar has focus to switch how user names are shown **everywhere** (sidebar labels, chat message headers):
+
+| Mode | Display |
+|------|---------|
+| **Contact name** (default) | First + Last name from the user's profile. Falls back to username if no name is set. |
+| **Account name** | Raw username (e.g. `nguyenvan.a`) |
+
+The toggle applies to DMs and Group channels only; public/private channel names are unaffected.
 
 ---
 
 ## Configuration
 
-Config is stored at `~/.config/netchat-tui/config.json` (created automatically on first launch).
+Config file: `~/.config/netchat-tui/config.json`
+_(on macOS: `~/Library/Application Support/netchat-tui/config.json`)_
 
 ```json
 {
@@ -126,9 +229,9 @@ Config is stored at `~/.config/netchat-tui/config.json` (created automatically o
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `token` | — | Bearer token (set via the auth prompt) |
-| `user_id` | — | Mattermost user ID (set automatically) |
-| `sidebar_limit` | `50` | Max channels shown in the sidebar |
+| `token` | — | Bearer token (written by the auth prompt) |
+| `user_id` | — | Your Mattermost user ID (written automatically) |
+| `sidebar_limit` | `200` | Maximum channels shown in the sidebar |
 
 ---
 
@@ -137,3 +240,14 @@ Config is stored at `~/.config/netchat-tui/config.json` (created automatically o
 ```bash
 go test ./...
 ```
+
+---
+
+## Tech stack
+
+| Library | Role |
+|---------|------|
+| [Bubbletea](https://github.com/charmbracelet/bubbletea) | Elm-architecture TUI framework |
+| [Lipgloss](https://github.com/charmbracelet/lipgloss) | Terminal styling and layout |
+| [Glamour](https://github.com/charmbracelet/glamour) | Markdown rendering |
+| [Bubbles](https://github.com/charmbracelet/bubbles) | Viewport, text input, spinner components |

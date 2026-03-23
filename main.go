@@ -77,7 +77,7 @@ func main() {
 	if cfg.SidebarLimit > 0 {
 		app = app.WithSidebarLimit(cfg.SidebarLimit)
 	}
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: app encountered an error: %v\n", err)
 		os.Exit(1)

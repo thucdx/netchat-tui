@@ -72,17 +72,18 @@ func (cm ChannelMember) UnreadCount(ch Channel) int64 {
 
 // Post represents a single message/post in a channel.
 type Post struct {
-	ID        string `json:"id"`
-	ChannelID string `json:"channel_id"`
-	UserID    string `json:"user_id"`
-	Message   string `json:"message"`
-	CreateAt  int64  `json:"create_at"`
-	UpdateAt  int64  `json:"update_at"`
-	DeleteAt  int64  `json:"delete_at"`
-	Type      string `json:"type"`      // "" = normal, "system_*" = system message
-	RootID    string `json:"root_id"`   // non-empty if this is a thread reply
-	EditAt    int64  `json:"edit_at"`
-	IsPinned  bool   `json:"is_pinned"`
+	ID        string   `json:"id"`
+	ChannelID string   `json:"channel_id"`
+	UserID    string   `json:"user_id"`
+	Message   string   `json:"message"`
+	CreateAt  int64    `json:"create_at"`
+	UpdateAt  int64    `json:"update_at"`
+	DeleteAt  int64    `json:"delete_at"`
+	Type      string   `json:"type"`      // "" = normal, "system_*" = system message
+	RootID    string   `json:"root_id"`   // non-empty if this is a thread reply
+	EditAt    int64    `json:"edit_at"`
+	IsPinned  bool     `json:"is_pinned"`
+	FileIds   []string `json:"file_ids"` // IDs of attached files (may be nil)
 }
 
 // PostList is the response from the posts endpoint.
@@ -93,6 +94,17 @@ type PostList struct {
 	Posts      map[string]Post `json:"posts"`
 	NextPostID string          `json:"next_post_id"`
 	PrevPostID string          `json:"prev_post_id"`
+}
+
+// FileInfo holds metadata for a Mattermost file attachment.
+type FileInfo struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	Size      int64  `json:"size"`
+	MimeType  string `json:"mime_type"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
 }
 
 // Preference represents a single user preference entry.

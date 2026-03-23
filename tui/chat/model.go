@@ -32,6 +32,8 @@ type Model struct {
 	keys        keymap.KeyMap
 	width       int
 	height      int // chat area height (excludes input)
+	imageCache     map[string]string // keyed by file ID, value is rendered ANSI image string
+	useContactName bool              // true = show first+last name; false = show username
 }
 
 // NewModel creates a new chat Model with default spinner and loading state.
@@ -42,11 +44,12 @@ func NewModel(keys keymap.KeyMap, userID string) Model {
 	sp.Style = styles.SpinnerStyle
 
 	return Model{
-		loading:   true,
-		spinner:   sp,
-		keys:      keys,
-		userID:    userID,
-		userCache: make(map[string]api.User),
+		loading:        true,
+		spinner:        sp,
+		keys:           keys,
+		userID:         userID,
+		userCache:      make(map[string]api.User),
+		useContactName: true,
 	}
 }
 
@@ -78,7 +81,7 @@ func (m *Model) LoadPosts(channelID, channelName string, postList api.PostList, 
 	m.posts = posts
 
 	// Render posts content into the viewport.
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -92,7 +95,7 @@ func (m *Model) AppendPost(post api.Post) {
 	atBottom := m.viewport.AtBottom()
 	m.posts = append(m.posts, post)
 
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
 	m.viewport.SetContent(content)
 
 	if atBottom {
@@ -107,7 +110,7 @@ func (m *Model) UpdatePost(post api.Post) {
 		if p.ID == post.ID {
 			atBottom := m.viewport.AtBottom()
 			m.posts[i] = post
-			content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
+			content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
 			m.viewport.SetContent(content)
 			if atBottom {
 				m.viewport.GotoBottom()
@@ -172,10 +175,10 @@ func (m *Model) PrependPosts(postList api.PostList, page int) {
 	m.posts = append(newPosts, m.posts...)
 
 	// Measure how many lines the prepended posts add.
-	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width)
+	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
 	addedLines := strings.Count(newContent, "\n") + 1
 
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
 	m.viewport.SetContent(content)
 
 	// Re-anchor: keep the user's reading position stable.
@@ -202,12 +205,46 @@ func (m *Model) SetSize(width, height int) {
 	m.viewport.Height = vpHeight
 
 	if len(m.posts) > 0 {
-		content := RenderPosts(m.posts, m.userCache, m.userID, width)
+		content := RenderPosts(m.posts, m.userCache, m.userID, width, m.imageCache, m.useContactName)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
 		}
 	}
+}
+
+// SetUseContactName switches between contact name (first+last) and account name
+// (username) display for message authors, re-rendering the viewport immediately.
+func (m *Model) SetUseContactName(useContact bool) {
+	if m.useContactName == useContact {
+		return
+	}
+	m.useContactName = useContact
+	if len(m.posts) > 0 {
+		atBottom := m.viewport.AtBottom()
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
+		m.viewport.SetContent(content)
+		if atBottom {
+			m.viewport.GotoBottom()
+		}
+	}
+}
+
+// SetImageCache updates the image cache and re-renders the viewport content.
+// Call this when new images have been fetched asynchronously.
+func (m Model) SetImageCache(cache map[string]string) Model {
+	// Merge new entries into existing cache.
+	if m.imageCache == nil {
+		m.imageCache = make(map[string]string)
+	}
+	for k, v := range cache {
+		m.imageCache[k] = v
+	}
+	if len(m.posts) > 0 {
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.useContactName)
+		m.viewport.SetContent(content)
+	}
+	return m
 }
 
 // AtTop returns true if the viewport is scrolled to the very top (for pagination trigger).

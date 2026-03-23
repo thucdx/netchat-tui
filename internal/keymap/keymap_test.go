@@ -29,12 +29,12 @@ func TestDefaultKeyMapHasAllBindings(t *testing.T) {
 	}
 }
 
-// TestShortHelp verifies ShortHelp() returns exactly 6 bindings.
+// TestShortHelp verifies ShortHelp() returns exactly 7 bindings.
 func TestShortHelp(t *testing.T) {
 	km := DefaultKeyMap()
 	short := km.ShortHelp()
-	if len(short) != 6 {
-		t.Errorf("ShortHelp() returned %d bindings, want 6", len(short))
+	if len(short) != 7 {
+		t.Errorf("ShortHelp() returned %d bindings, want 7", len(short))
 	}
 }
 

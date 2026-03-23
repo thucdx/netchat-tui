@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/tui/styles"
@@ -18,32 +19,60 @@ func stripANSI(s string) string {
 	return ansiEscape.ReplaceAllString(s, "")
 }
 
+// newMarkdownRenderer returns a function that renders a markdown string to ANSI
+// using glamour's dark theme, word-wrapped to the given width.
+// Falls back to plain text on error.
+func newMarkdownRenderer(width int) func(string) string {
+	opts := []glamour.TermRendererOption{
+		glamour.WithStylePath("dark"),
+		glamour.WithEmoji(),
+	}
+	if width > 2 {
+		opts = append(opts, glamour.WithWordWrap(width-2))
+	}
+	r, err := glamour.NewTermRenderer(opts...)
+	if err != nil {
+		return func(s string) string { return s }
+	}
+	return func(s string) string {
+		out, err := r.Render(s)
+		if err != nil {
+			return s
+		}
+		// Trim the blank lines glamour adds around the document.
+		return strings.Trim(out, "\n")
+	}
+}
+
 // RenderPosts converts a sorted []api.Post into a single string for the viewport.
 // Groups consecutive posts from the same user (only first shows username+timestamp).
 // myUserID is the logged-in user's ID; their messages show "You" in a distinct colour.
-// Strips ANSI from message content.
+// Each unique user gets a rotating colour on the header bar for easy scanning.
+// Message content is rendered with glamour (markdown + syntax highlighting).
 // Shows "(edited)" for posts with EditAt > 0.
-func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int) string {
+func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, useContactName bool) string {
 	if len(posts) == 0 {
 		return ""
 	}
 
+	renderMD := newMarkdownRenderer(width)
 	var sb strings.Builder
 	lastUserID := ""
+	var currentBg lipgloss.Color
 
 	for i, post := range posts {
-		// System messages get special rendering.
+		// System messages get special rendering (no user background).
 		if post.Type != "" {
 			content := stripANSI(post.Message)
 			if content == "" {
 				content = "— system message —"
 			}
-			line := styles.MessageSystem.Render(content)
 			if i > 0 {
 				sb.WriteString("\n")
 			}
-			sb.WriteString(line)
-			lastUserID = "" // reset grouping after system message
+			sb.WriteString(styles.MessageSystem.Render(content))
+			lastUserID = ""
+			currentBg = lipgloss.Color("")
 			continue
 		}
 
@@ -55,31 +84,49 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		}
 
 		if !isGrouped {
-			// Header line: username + timestamp.
-			// Current user gets a distinct "You ▶" label in green; others get their name in purple.
-			timestamp := FormatTimestamp(post.CreateAt)
-			var usernameStr string
+			// Determine per-user palette entry.
+			var usernameFg lipgloss.Color
+			var usernameLabel string
 			if myUserID != "" && post.UserID == myUserID {
-				usernameStr = styles.MessageMyUsername.Render("You ▶")
+				currentBg = styles.MessageSelfBg
+				usernameFg = lipgloss.Color("#10B981")
+				usernameLabel = "You ▶"
 			} else {
-				username := resolveUsername(post.UserID, userCache)
-				usernameStr = styles.MessageUsername.Render(username)
+				entry := styles.MessageUserPalette[styles.UserColorIndex(post.UserID)]
+				currentBg = entry.Bg
+				usernameFg = entry.Fg
+				usernameLabel = resolveUsername(post.UserID, userCache, useContactName)
 			}
-			timestampStr := styles.MessageTimestamp.Render(" " + timestamp)
-			sb.WriteString(usernameStr + timestampStr + "\n")
+
+			// Header: username + timestamp with user-colour background spanning full width.
+			timestamp := FormatTimestamp(post.CreateAt)
+			usernameStr := lipgloss.NewStyle().Foreground(usernameFg).Bold(true).Background(currentBg).Render(usernameLabel)
+			timestampStr := styles.MessageTimestamp.Background(currentBg).Render(" " + timestamp)
+			used := lipgloss.Width(usernameStr) + lipgloss.Width(timestampStr)
+			if width > used {
+				pad := lipgloss.NewStyle().Background(currentBg).Render(strings.Repeat(" ", width-used))
+				sb.WriteString(usernameStr + timestampStr + pad + "\n")
+			} else {
+				sb.WriteString(usernameStr + timestampStr + "\n")
+			}
 		}
 
-		// Message content: strip ANSI, word-wrap.
-		content := stripANSI(post.Message)
-		if width > 0 {
-			content = lipgloss.NewStyle().Width(width).Render(content)
-		}
-		msgLine := styles.MessageText.Render(content)
-		sb.WriteString(msgLine)
+		// Render content with glamour (handles markdown, code blocks, images, etc.).
+		// Strip raw ANSI from the source first so glamour sees clean markdown.
+		rendered := renderMD(stripANSI(post.Message))
+		sb.WriteString(rendered)
 
 		// Show "(edited)" if applicable.
 		if post.EditAt > 0 {
 			sb.WriteString(" " + styles.MessageEdited.Render("(edited)"))
+		}
+
+		// Render file attachments (images as terminal art, other files as placeholder).
+		for _, fid := range post.FileIds {
+			if rendered, ok := imageCache[fid]; ok && rendered != "" {
+				sb.WriteString("\n")
+				sb.WriteString(rendered)
+			}
 		}
 
 		lastUserID = post.UserID
@@ -109,8 +156,10 @@ func FormatTimestamp(ms int64) string {
 }
 
 // resolveUsername returns the display name for a userID from cache.
+// When useContact is true, prefers FirstName+LastName; falls back to Username.
+// When useContact is false, returns Username directly.
 // Falls back to "unknown" if not in cache — never panics.
-func resolveUsername(userID string, userCache map[string]api.User) string {
+func resolveUsername(userID string, userCache map[string]api.User, useContact bool) string {
 	if userCache == nil {
 		return "unknown"
 	}
@@ -118,8 +167,10 @@ func resolveUsername(userID string, userCache map[string]api.User) string {
 	if !ok {
 		return "unknown"
 	}
-	if u.Nickname != "" {
-		return u.Nickname
+	if useContact {
+		if full := strings.TrimSpace(u.FirstName + " " + u.LastName); full != "" {
+			return full
+		}
 	}
 	if u.Username != "" {
 		return u.Username

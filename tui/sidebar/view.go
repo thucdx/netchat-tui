@@ -8,14 +8,262 @@ import (
 	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
-// Render builds the sidebar string for the given model.
-func Render(m Model) string {
-	if len(m.items) == 0 {
-		return styles.SidebarStyle.Render("")
+// channelIcon returns a single character that encodes both channel type and
+// mute status, so no separate mute prefix is needed.
+//
+// Unmuted: # (public)  @ (DM)  ⊕ (group)  ■ (private)
+// Muted:   ⊘ (public)  ø (DM)  ⊖ (group)  □ (private)
+func channelIcon(chType string, muted bool) string {
+	if muted {
+		switch chType {
+		case "D":
+			return "ø"
+		case "G":
+			return "⊖"
+		case "O":
+			return "⊘"
+		case "P":
+			return "□"
+		}
+	}
+	switch chType {
+	case "D":
+		return "@"
+	case "G":
+		return "⊕"
+	case "O":
+		return "#"
+	case "P":
+		return "■"
+	}
+	return "·"
+}
+
+// truncateName shortens name to fit within maxWidth display columns.
+// If truncation is needed, the last visible character is replaced with "…"
+// so the total display width is always exactly maxWidth.
+// If maxWidth <= 0 the empty string is returned.
+func truncateName(name string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if lipgloss.Width(name) <= maxWidth {
+		return name
+	}
+	// Reserve 1 column for the ellipsis.
+	runes := []rune(name)
+	for lipgloss.Width(string(runes))> maxWidth-1 && len(runes) > 0 {
+		runes = runes[:len(runes)-1]
+	}
+	return string(runes) + "…"
+}
+
+// renderSearch renders the sidebar in search mode.
+//
+// When query length < 3: query bar (line 1) + hint (line 2) + normal item list.
+// When query length ≥ 3: query bar (line 1) + result rows.
+func renderSearch(m Model) string {
+	rowWidth := m.width - 2 // text content width (same as Render)
+
+	var lines []string
+
+	// ── Line 1: query bar or confirm prompt ───────────────────────────────────
+	if m.search.confirmTarget != nil {
+		confirm := fmt.Sprintf("Join %s? [y/N]", truncateName(m.search.confirmTarget.displayName, rowWidth-13))
+		lines = append(lines, styles.SearchConfirmStyle.Width(rowWidth+1).Render(confirm))
+	} else {
+		queryText := "/ " + m.search.query + "█"
+		lines = append(lines, styles.SearchQueryStyle.Width(rowWidth+1).Render(queryText))
 	}
 
-	// Items are pre-sorted by SetItems/IncrementUnread by LastPostAt descending.
-	// Compute the visible window directly.
+	q := []rune(m.search.query)
+
+	if len(q) < 3 {
+		// ── Hint line + normal sidebar list ──────────────────────────────────
+		hint := "type ≥3 chars to search"
+		lines = append(lines, styles.SearchHintStyle.Width(rowWidth+1).Render(hint))
+
+		// Render normal items in the remaining height.
+		normalHeight := m.height - 2 // 1 query + 1 hint
+		if normalHeight < 0 {
+			normalHeight = 0
+		}
+		end := m.viewOffset + normalHeight
+		if end > len(m.items) {
+			end = len(m.items)
+		}
+		for i, item := range m.items[m.viewOffset:end] {
+			absIdx := m.viewOffset + i
+			isCursor := absIdx == m.cursor
+			isSelected := absIdx == m.selected
+
+			icon := channelIcon(item.Channel.Type, item.IsMuted)
+			iconWidth := lipgloss.Width(icon)
+
+			var badge string
+			var badgeWidth int
+			if item.UnreadCount > 0 {
+				badgeText := fmt.Sprintf("%d", item.UnreadCount)
+				if item.IsMuted {
+					badge = styles.MutedBadge.Render(badgeText)
+				} else {
+					badge = styles.UnreadBadge.Render(badgeText)
+				}
+				badgeWidth = lipgloss.Width(badge)
+			}
+
+			nameWidth := rowWidth - iconWidth - 1
+			if badgeWidth > 0 {
+				nameWidth -= badgeWidth + 1
+			}
+			if nameWidth < 0 {
+				nameWidth = 0
+			}
+			name := truncateName(item.DisplayName, nameWidth)
+			if cur := lipgloss.Width(name); cur < nameWidth {
+				name += strings.Repeat(" ", nameWidth-cur)
+			}
+
+			var rowContent string
+			if badgeWidth > 0 {
+				rowContent = icon + " " + name + " " + badge
+			} else {
+				rowContent = icon + " " + name
+			}
+
+			var rowStyle lipgloss.Style
+			switch {
+			case isCursor:
+				rowStyle = styles.ChannelSelected
+			case isSelected:
+				rowStyle = styles.ChannelActive
+			case item.IsMuted && item.UnreadCount > 0:
+				rowStyle = styles.ChannelMutedUnread
+			case item.IsMuted:
+				rowStyle = styles.ChannelMuted
+			case item.UnreadCount > 0:
+				rowStyle = styles.ChannelUnread
+			default:
+				rowStyle = styles.ChannelNormal
+			}
+			lines = append(lines, rowStyle.Width(rowWidth+1).Render(rowContent))
+		}
+	} else {
+		// ── Results list ──────────────────────────────────────────────────────
+		maxResults := m.height - 1 // 1 line used by query bar
+		if maxResults < 0 {
+			maxResults = 0
+		}
+		for i, r := range m.search.results {
+			if i >= maxResults {
+				break
+			}
+			isCursor := i == m.search.cursor
+
+			switch r.kind {
+			case searchKindExisting:
+				item := r.item
+				icon := channelIcon(item.Channel.Type, item.IsMuted)
+				iconWidth := lipgloss.Width(icon)
+
+				var badge string
+				var badgeWidth int
+				if item.UnreadCount > 0 {
+					badgeText := fmt.Sprintf("%d", item.UnreadCount)
+					if item.IsMuted {
+						badge = styles.MutedBadge.Render(badgeText)
+					} else {
+						badge = styles.UnreadBadge.Render(badgeText)
+					}
+					badgeWidth = lipgloss.Width(badge)
+				}
+
+				nameWidth := rowWidth - iconWidth - 1
+				if badgeWidth > 0 {
+					nameWidth -= badgeWidth + 1
+				}
+				if nameWidth < 0 {
+					nameWidth = 0
+				}
+				name := truncateName(item.DisplayName, nameWidth)
+				if cur := lipgloss.Width(name); cur < nameWidth {
+					name += strings.Repeat(" ", nameWidth-cur)
+				}
+
+				var rowContent string
+				if badgeWidth > 0 {
+					rowContent = icon + " " + name + " " + badge
+				} else {
+					rowContent = icon + " " + name
+				}
+
+				var rowStyle lipgloss.Style
+				if isCursor {
+					rowStyle = styles.ChannelSelected
+				} else if item.Channel.ID == func() string {
+					if ch := m.SelectedChannel(); ch != nil {
+						return ch.Channel.ID
+					}
+					return ""
+				}() {
+					rowStyle = styles.ChannelActive
+				} else if item.IsMuted && item.UnreadCount > 0 {
+					rowStyle = styles.ChannelMutedUnread
+				} else if item.IsMuted {
+					rowStyle = styles.ChannelMuted
+				} else if item.UnreadCount > 0 {
+					rowStyle = styles.ChannelUnread
+				} else {
+					rowStyle = styles.ChannelNormal
+				}
+				lines = append(lines, rowStyle.Width(rowWidth+1).Render(rowContent))
+
+			case searchKindNewDM, searchKindNewChannel:
+				var typeLabel string
+				if r.kind == searchKindNewDM {
+					typeLabel = "@"
+				} else {
+					typeLabel = "#"
+				}
+				nameWidth := rowWidth - 3 // "+ " + typeLabel
+				if nameWidth < 0 {
+					nameWidth = 0
+				}
+				name := truncateName(r.displayName, nameWidth)
+				if cur := lipgloss.Width(name); cur < nameWidth {
+					name += strings.Repeat(" ", nameWidth-cur)
+				}
+				rowContent := "+ " + typeLabel + name
+
+				var rowStyle lipgloss.Style
+				if isCursor {
+					rowStyle = styles.SearchNewItemCursorStyle
+				} else {
+					rowStyle = styles.SearchNewItemStyle
+				}
+				lines = append(lines, rowStyle.Width(rowWidth+1).Render(rowContent))
+			}
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// Render builds the sidebar string for the given model.
+// Each item is guaranteed to occupy exactly one line because:
+//   - rowContent is always a plain string (no embedded ANSI) so lipgloss
+//     measures its width correctly.
+//   - name is truncated (with "…") or padded to exactly nameWidth columns.
+//   - The arithmetic icon+space+name+[space+badge] == rowWidth holds exactly.
+//   - rowStyle.Width(rowWidth) therefore never wraps.
+func Render(m Model) string {
+	if m.search.active {
+		return renderSearch(m)
+	}
+	if len(m.items) == 0 {
+		return ""
+	}
+
 	visibleHeight := m.height
 	if len(m.items) > m.height {
 		visibleHeight = m.height - 1
@@ -25,13 +273,18 @@ func Render(m Model) string {
 		end = len(m.items)
 	}
 	if m.viewOffset >= len(m.items) {
-		return styles.SidebarStyle.Render("")
+		return ""
 	}
 	visible := m.items[m.viewOffset:end]
 
-	// Resolve cursor index and selected index for highlighting.
 	cursorIdx := m.cursor
 	selectedIdx := m.selected
+
+	// rowWidth is the text content width: what's available for icon + name + badge.
+	// sidebarWidth = border(1) + paddingLeft(1) + rowWidth
+	// The row style Width must be rowWidth + 1 (to include PaddingLeft) because
+	// lipgloss.Width(w) wraps content at w - leftPadding.
+	rowWidth := m.width - 2
 
 	var lines []string
 
@@ -40,24 +293,12 @@ func Render(m Model) string {
 		isCursor := absIdx == cursorIdx
 		isSelected := absIdx == selectedIdx
 
-		// Build the icon prefix.
-		var icon string
-		if item.IsMuted {
-			icon = "🔇"
-		}
-		switch item.Channel.Type {
-		case "D":
-			icon += "@"
-		case "G":
-			icon += "👥"
-		case "O":
-			icon += "#"
-		case "P":
-			icon += "🔒"
-		}
+		icon := channelIcon(item.Channel.Type, item.IsMuted)
+		iconWidth := lipgloss.Width(icon)
 
-		// Build the badge.
+		// Build badge (plain rendered string; width measured once).
 		var badge string
+		var badgeWidth int
 		if item.UnreadCount > 0 {
 			badgeText := fmt.Sprintf("%d", item.UnreadCount)
 			if item.IsMuted {
@@ -65,17 +306,12 @@ func Render(m Model) string {
 			} else {
 				badge = styles.UnreadBadge.Render(badgeText)
 			}
+			badgeWidth = lipgloss.Width(badge)
 		}
 
-		// Compute available width for the name.
-		// Total content width = SidebarWidth - 2 (PaddingLeft(1) on each side accounted for in style).
-		// We must fit: icon + space + name + space + badge within the row width.
-		contentWidth := styles.SidebarWidth - 2
-		iconWidth := lipgloss.Width(icon)
-		badgeWidth := lipgloss.Width(badge)
-
-		// space between icon and name, space before badge
-		nameWidth := contentWidth - iconWidth - 1
+		// nameWidth: columns the name text must occupy.
+		// Layout: icon(iconWidth) + sp(1) + name(nameWidth) [+ sp(1) + badge(badgeWidth)]
+		nameWidth := rowWidth - iconWidth - 1
 		if badgeWidth > 0 {
 			nameWidth -= badgeWidth + 1
 		}
@@ -83,24 +319,16 @@ func Render(m Model) string {
 			nameWidth = 0
 		}
 
-		// Truncate or pad the display name.
-		name := item.DisplayName
-		nameRunes := []rune(name)
-		nameDispWidth := lipgloss.Width(name)
-		if nameDispWidth > nameWidth {
-			// Truncate to fit.
-			for lipgloss.Width(string(nameRunes)) > nameWidth && len(nameRunes) > 0 {
-				nameRunes = nameRunes[:len(nameRunes)-1]
-			}
-			name = string(nameRunes)
-		}
-		// Pad name to fill available width.
-		currentNameWidth := lipgloss.Width(name)
-		if currentNameWidth < nameWidth {
-			name += strings.Repeat(" ", nameWidth-currentNameWidth)
+		// Fit name into nameWidth: truncate with "…" or pad with spaces.
+		// Result is always exactly nameWidth display columns.
+		name := truncateName(item.DisplayName, nameWidth)
+		currentW := lipgloss.Width(name)
+		if currentW < nameWidth {
+			name += strings.Repeat(" ", nameWidth-currentW)
 		}
 
-		// Assemble the row content.
+		// Assemble plain row content — no embedded ANSI.
+		// Total visual width == rowWidth exactly.
 		var rowContent string
 		if badgeWidth > 0 {
 			rowContent = icon + " " + name + " " + badge
@@ -108,14 +336,17 @@ func Render(m Model) string {
 			rowContent = icon + " " + name
 		}
 
-		// Apply row style.
-		// Priority: cursor > selected (active channel) > muted > unread > normal.
+		// Select row style.
+		// Bold is applied by the style itself — never pre-rendered into rowContent —
+		// so lipgloss always measures rowContent width correctly.
 		var rowStyle lipgloss.Style
 		switch {
 		case isCursor:
 			rowStyle = styles.ChannelSelected
 		case isSelected:
 			rowStyle = styles.ChannelActive
+		case item.IsMuted && item.UnreadCount > 0:
+			rowStyle = styles.ChannelMutedUnread
 		case item.IsMuted:
 			rowStyle = styles.ChannelMuted
 		case item.UnreadCount > 0:
@@ -124,13 +355,13 @@ func Render(m Model) string {
 			rowStyle = styles.ChannelNormal
 		}
 
-		lines = append(lines, rowStyle.Render(rowContent))
+		lines = append(lines, rowStyle.Width(rowWidth+1).Render(rowContent))
 	}
 
-	// Append scroll position indicator when list exceeds visible height.
+	// Scroll indicator row.
 	if len(m.items) > m.height {
 		indicator := fmt.Sprintf("  ↕ %d/%d", m.cursor+1, len(m.items))
-		lines = append(lines, styles.SubtleStyle.Width(styles.SidebarWidth-2).Render(indicator))
+		lines = append(lines, styles.SubtleStyle.Width(rowWidth+1).Render(indicator))
 	}
 
 	return strings.Join(lines, "\n")

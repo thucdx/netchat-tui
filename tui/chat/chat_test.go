@@ -158,7 +158,7 @@ func TestRenderPosts_MessageGrouping(t *testing.T) {
 		"alice": {ID: "alice", Username: "alice"},
 	}
 
-	rendered := RenderPosts(posts, userCache, "", 0)
+	rendered := RenderPosts(posts, userCache, "", 0, nil, false)
 
 	// Strip ANSI so we can count occurrences in plain text.
 	plain := stripANSI(rendered)
@@ -178,7 +178,7 @@ func TestRenderPosts_SystemMessage(t *testing.T) {
 		{ID: "1", UserID: "system", Message: "Alice joined the channel", CreateAt: 100, Type: "system_join_channel"},
 	}
 
-	rendered := RenderPosts(posts, nil, "", 0)
+	rendered := RenderPosts(posts, nil, "", 0, nil, false)
 
 	// System message content should appear in the rendered output
 	if !strings.Contains(rendered, posts[0].Message) && !strings.Contains(rendered, "system") {
@@ -199,7 +199,7 @@ func TestRenderPosts_EditedIndicator(t *testing.T) {
 		{ID: "1", UserID: "u1", Message: "original text", CreateAt: 100, EditAt: 200},
 	}
 
-	rendered := RenderPosts(posts, nil, "", 0)
+	rendered := RenderPosts(posts, nil, "", 0, nil, false)
 	plain := stripANSI(rendered)
 
 	if !strings.Contains(plain, "(edited)") {
@@ -217,7 +217,7 @@ func TestRenderPosts_ANSIStripped(t *testing.T) {
 		{ID: "1", UserID: "u1", Message: ansiMsg, CreateAt: 100},
 	}
 
-	rendered := RenderPosts(posts, nil, "", 0)
+	rendered := RenderPosts(posts, nil, "", 0, nil, false)
 	plain := stripANSI(rendered)
 
 	// The raw ANSI clear-screen sequence \x1b[2J must not appear in the plain output.
@@ -255,8 +255,10 @@ func TestFormatTimestamp_Today(t *testing.T) {
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestFormatTimestamp_Yesterday(t *testing.T) {
-	ts := time.Now().Add(-25 * time.Hour) // 25 h ago is guaranteed to be yesterday or earlier
-	ms := ts.UnixMilli()
+	// Use noon yesterday so the result is always "yesterday", regardless of current time-of-day.
+	now := time.Now()
+	yesterday := time.Date(now.Year(), now.Month(), now.Day()-1, 12, 0, 0, 0, now.Location())
+	ms := yesterday.UnixMilli()
 
 	result := FormatTimestamp(ms)
 
@@ -293,23 +295,35 @@ func TestResolveUsername_Fallback(t *testing.T) {
 	cache := map[string]api.User{
 		"other": {ID: "other", Username: "other_user"},
 	}
-	result := resolveUsername("missing_id", cache)
+	result := resolveUsername("missing_id", cache, false)
 	if result != "unknown" {
 		t.Errorf("resolveUsername with missing ID: got %q, want 'unknown'", result)
 	}
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// 13. resolveUsername – Nickname preferred over Username
+// 13. resolveUsername – contact name vs account name modes
 // ────────────────────────────────────────────────────────────────────────────
 
-func TestResolveUsername_NicknamePreferred(t *testing.T) {
+func TestResolveUsername_ContactName(t *testing.T) {
 	cache := map[string]api.User{
-		"u1": {ID: "u1", Username: "plain_username", Nickname: "Cool Nick"},
+		"u1": {ID: "u1", Username: "plain_username", FirstName: "Alice", LastName: "Smith"},
 	}
-	result := resolveUsername("u1", cache)
-	if result != "Cool Nick" {
-		t.Errorf("resolveUsername: got %q, want 'Cool Nick' (Nickname should take priority)", result)
+	if got := resolveUsername("u1", cache, true); got != "Alice Smith" {
+		t.Errorf("contact mode: got %q, want 'Alice Smith'", got)
+	}
+	if got := resolveUsername("u1", cache, false); got != "plain_username" {
+		t.Errorf("account mode: got %q, want 'plain_username'", got)
+	}
+}
+
+func TestResolveUsername_ContactFallback(t *testing.T) {
+	// No first/last name → falls back to username even in contact mode.
+	cache := map[string]api.User{
+		"u1": {ID: "u1", Username: "plain_username"},
+	}
+	if got := resolveUsername("u1", cache, true); got != "plain_username" {
+		t.Errorf("contact mode fallback: got %q, want 'plain_username'", got)
 	}
 }
 

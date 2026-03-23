@@ -34,13 +34,25 @@ const (
 type channelsLoadedMsg struct {
 	items     []sidebar.ChannelItem
 	userCache map[string]api.User
+	teams     []api.Team
 }
+
+// directChannelReadyMsg carries a newly created or fetched DM channel.
+type directChannelReadyMsg struct {
+	channel  api.Channel
+	userID   string // the other user's ID, for display-name resolution
+	username string
+}
+
+// channelJoinedMsg carries the channel the user just joined.
+type channelJoinedMsg struct{ channel api.Channel }
 
 type postsReadyMsg struct {
 	channelID   string
 	channelName string
 	posts       api.PostList
 	userCache   map[string]api.User // authors fetched alongside posts
+	fileIDs     []string            // file IDs from all posts (for async image loading)
 }
 
 type postSentMsg struct{ post api.Post }
@@ -72,15 +84,19 @@ func dmOtherUserID(channelName, myUserID string) string {
 
 // AppModel is the root Bubbletea model.
 type AppModel struct {
-	layout  Layout
-	focus   FocusPane
-	keys    keymap.KeyMap
-	api     *api.Client  // nil when running without a real backend
-	ws      *api.WSClient // nil until WS connects
-	wsCancel context.CancelFunc // cancels WS reconnect loop
-	userID    string
-	userCache map[string]api.User // all known users (DM partners + post authors)
-	ready     bool
+	layout       Layout
+	focus        FocusPane
+	keys         keymap.KeyMap
+	api          *api.Client        // nil when running without a real backend
+	ws           *api.WSClient      // nil until WS connects
+	wsCancel     context.CancelFunc // cancels WS reconnect loop
+	userID       string
+	userCache    map[string]api.User // all known users (DM partners + post authors)
+	imageCache   map[string]string   // rendered ANSI image strings keyed by file ID
+	ready        bool
+	teams        []api.Team  // all teams the user belongs to (for channel search)
+	sidebarWidth int  // total sidebar width including border; resizable via drag
+	dragging     bool // true while the user is dragging the sidebar border
 
 	sidebar sidebar.Model
 	chat    chat.Model
@@ -95,13 +111,14 @@ func NewAppModel(apiClient *api.Client) AppModel {
 	}
 	keys := keymap.DefaultKeyMap()
 	return AppModel{
-		focus:   FocusSidebar,
-		keys:    keys,
-		api:     apiClient,
-		userID:  userID,
-		sidebar: sidebar.NewModel(keys, userID),
-		chat:    chat.NewModel(keys, userID),
-		input:   input.NewModel(keys),
+		focus:        FocusSidebar,
+		keys:         keys,
+		api:          apiClient,
+		userID:       userID,
+		sidebarWidth: styles.SidebarWidth,
+		sidebar:      sidebar.NewModel(keys, userID),
+		chat:         chat.NewModel(keys, userID),
+		input:        input.NewModel(keys),
 	}
 }
 
@@ -131,12 +148,16 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── Layout ────────────────────────────────────────────────────────────────
 
 	case tea.WindowSizeMsg:
-		m.layout = NewLayout(msg.Width, msg.Height)
+		m.layout = NewLayout(msg.Width, msg.Height, m.sidebarWidth)
 		m.ready = true
 		m.sidebar.SetHeight(m.layout.TotalHeight)
+		m.sidebar.SetWidth(m.sidebarWidth)
 		m.chat.SetSize(m.layout.ChatWidth, m.layout.ChatHeight)
 		m.input.SetSize(m.layout.ChatWidth, m.layout.InputHeight)
 		return m, nil
+
+	case tea.MouseMsg:
+		return m.handleMouse(msg), nil
 
 	// ── Global key handling ───────────────────────────────────────────────────
 
@@ -146,37 +167,54 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-		// q quits only when sidebar is focused (not while typing).
-		if m.focus == FocusSidebar && key.Matches(msg, m.keys.Quit) {
-			return m, tea.Quit
-		}
+		// Skip global hotkeys while the sidebar search input is active —
+		// every key should reach the sidebar's own handler instead.
+		sidebarSearching := m.focus == FocusSidebar && m.sidebar.IsSearching()
 
-		// Focus cycling.
-		switch {
-		case key.Matches(msg, m.keys.NextPanel):
-			switch m.focus {
-			case FocusSidebar:
-				m.focus = FocusChat
-			case FocusChat:
-				m.focus = FocusInput
-			case FocusInput:
-				m.focus = FocusSidebar
-			}
-			m.syncFocus()
-			return m, nil
-
-		case key.Matches(msg, m.keys.FocusInput):
-			if m.focus == FocusSidebar || m.focus == FocusChat {
-				m.focus = FocusInput
-				m.syncFocus()
-				return m, nil
+		if !sidebarSearching {
+			// q quits only when sidebar is focused (not while typing).
+			if m.focus == FocusSidebar && key.Matches(msg, m.keys.Quit) {
+				return m, tea.Quit
 			}
 
-		case key.Matches(msg, m.keys.FocusSidebar):
-			if m.focus == FocusInput || m.focus == FocusChat {
-				m.focus = FocusSidebar
+			// Focus cycling.
+			switch {
+			case key.Matches(msg, m.keys.NextPanel):
+				switch m.focus {
+				case FocusSidebar:
+					m.focus = FocusChat
+				case FocusChat:
+					m.focus = FocusInput
+				case FocusInput:
+					m.focus = FocusSidebar
+				}
 				m.syncFocus()
 				return m, nil
+
+			case key.Matches(msg, m.keys.FocusInput):
+				if m.focus == FocusSidebar || m.focus == FocusChat {
+					m.focus = FocusInput
+					m.syncFocus()
+					return m, nil
+				}
+
+			case key.Matches(msg, m.keys.FocusSidebar):
+				if m.focus == FocusInput || m.focus == FocusChat {
+					m.focus = FocusSidebar
+					m.syncFocus()
+					return m, nil
+				}
+
+			case key.Matches(msg, m.keys.ToggleName):
+				if m.focus == FocusSidebar {
+					m.sidebar.ToggleDisplayName()
+					m.chat.SetUseContactName(m.sidebar.UseContactName())
+					// Update chat header if a DM/group channel is currently open.
+					if ch := m.sidebar.SelectedChannel(); ch != nil && ch.AccountName != "" {
+						m.chat.SetChannelInfo(ch.Channel.ID, ch.DisplayName)
+					}
+					return m, nil
+				}
 			}
 		}
 
@@ -187,12 +225,66 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case channelsLoadedMsg:
 		m.sidebar.SetItems(msg.items)
+		m.teams = msg.teams
 		// Seed the app-wide user cache with DM partners / group members.
 		if m.userCache == nil {
 			m.userCache = make(map[string]api.User)
 		}
 		for id, u := range msg.userCache {
 			m.userCache[id] = u
+		}
+		return m, nil
+
+	// ── Search ─────────────────────────────────────────────────────────────
+
+	case messages.TriggerSearchMsg:
+		if m.api != nil && len([]rune(msg.Query)) >= 3 {
+			return m, m.cmdSearch(msg.Query)
+		}
+		return m, nil
+
+	case messages.SearchResultsMsg:
+		m.sidebar.SetSearchAPIResults(msg.Query, msg.Users, msg.Channels)
+		return m, nil
+
+	case messages.CreateDirectChannelMsg:
+		if m.api != nil {
+			return m, m.cmdCreateDirectChannel(msg.UserID)
+		}
+		return m, nil
+
+	case messages.JoinChannelMsg:
+		if m.api != nil {
+			return m, m.cmdJoinChannel(msg.ChannelID)
+		}
+		return m, nil
+
+	case directChannelReadyMsg:
+		item := sidebar.ChannelItem{
+			Channel:     msg.channel,
+			DisplayName: msg.username,
+		}
+		m.sidebar.UpsertItem(item)
+		m.sidebar.ExitSearch()
+		m.input.SetChannelID(msg.channel.ID)
+		m.chat.SetChannelInfo(msg.channel.ID, msg.username)
+		if m.api != nil {
+			return m, m.cmdFetchPosts(msg.channel.ID, msg.username)
+		}
+		return m, nil
+
+	case channelJoinedMsg:
+		displayName := msg.channel.DisplayName
+		item := sidebar.ChannelItem{
+			Channel:     msg.channel,
+			DisplayName: displayName,
+		}
+		m.sidebar.UpsertItem(item)
+		m.sidebar.ExitSearch()
+		m.input.SetChannelID(msg.channel.ID)
+		m.chat.SetChannelInfo(msg.channel.ID, displayName)
+		if m.api != nil {
+			return m, m.cmdFetchPosts(msg.channel.ID, displayName)
 		}
 		return m, nil
 
@@ -234,7 +326,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return nil
 			}
 		}
-		return m, markRead
+		var imgCmd tea.Cmd
+		if len(msg.fileIDs) > 0 {
+			imgCmd = m.cmdFetchImages(msg.fileIDs)
+		}
+		return m, tea.Batch(markRead, imgCmd)
+
+	case messages.ImagesReadyMsg:
+		if m.imageCache == nil {
+			m.imageCache = make(map[string]string)
+		}
+		for k, v := range msg.Images {
+			m.imageCache[k] = v
+		}
+		m.chat = m.chat.SetImageCache(m.imageCache)
+		return m, nil
 
 	// ── Sending messages ──────────────────────────────────────────────────────
 
@@ -366,7 +472,11 @@ func (m AppModel) View() string {
 	if m.focus == FocusSidebar {
 		sidebarStyle = styles.SidebarFocusedStyle
 	}
-	sidebarView := sidebarStyle.Height(m.layout.TotalHeight).Render(m.sidebar.View())
+	contentWidth := m.sidebarWidth - styles.SidebarBorderWidth
+	sidebarView := sidebarStyle.
+		Width(contentWidth).
+		Height(m.layout.TotalHeight).
+		Render(m.sidebar.View())
 
 	chatView := styles.ChatStyle.
 		Width(m.layout.ChatWidth).
@@ -465,42 +575,60 @@ func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 		for _, ch := range allChannels {
 			mb := memberByChannelID[ch.ID]
 			displayName := ch.DisplayName
+			var accountName, contactName string
 			switch ch.Type {
 			case "D":
 				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
-					if u, ok := userCache[otherID]; ok && u.Username != "" {
-						displayName = u.Username
+					if u, ok := userCache[otherID]; ok {
+						accountName = u.Username
+						full := strings.TrimSpace(u.FirstName + " " + u.LastName)
+						contactName = full
+						if accountName == "" {
+							accountName = otherID
+						}
+						displayName = accountName
 					} else if displayName == "" {
 						// User not in cache (e.g. deactivated account) — fall back to
 						// their user ID so the sidebar row is never blank.
 						displayName = otherID
+						accountName = otherID
 					}
 				}
 			case "G":
 				// Build "user1, user2, ..." from participants excluding self.
-				var names []string
+				var accountNames, contactNames []string
 				for _, uid := range strings.Split(ch.Name, "__") {
 					if uid == "" || uid == userID {
 						continue
 					}
 					if u, ok := userCache[uid]; ok && u.Username != "" {
-						names = append(names, u.Username)
+						accountNames = append(accountNames, u.Username)
+						full := strings.TrimSpace(u.FirstName + " " + u.LastName)
+						if full != "" {
+							contactNames = append(contactNames, full)
+						} else {
+							contactNames = append(contactNames, u.Username)
+						}
 					}
 				}
-				if len(names) > 0 {
-					displayName = strings.Join(names, ", ")
+				accountName = strings.Join(accountNames, ", ")
+				contactName = strings.Join(contactNames, ", ")
+				if accountName != "" {
+					displayName = accountName
 				}
 			}
 			item := sidebar.ChannelItem{
 				Channel:     ch,
 				Member:      mb,
 				DisplayName: displayName,
+				ContactName: contactName,
+				AccountName: accountName,
 				UnreadCount: mb.UnreadCount(ch),
 				IsMuted:     mb.IsMuted(),
 			}
 			items = append(items, item)
 		}
-		return channelsLoadedMsg{items: items, userCache: userCache}
+		return channelsLoadedMsg{items: items, userCache: userCache, teams: teams}
 	}
 }
 
@@ -536,11 +664,18 @@ func (m AppModel) cmdFetchPosts(channelID, channelName string) tea.Cmd {
 			}
 		}
 
+		// Collect file IDs to be fetched asynchronously.
+		var fileIDs []string
+		for _, p := range posts.Posts {
+			fileIDs = append(fileIDs, p.FileIds...)
+		}
+
 		return postsReadyMsg{
 			channelID:   channelID,
 			channelName: channelName,
 			posts:       posts,
 			userCache:   userCache,
+			fileIDs:     fileIDs,
 		}
 	}
 }
@@ -558,6 +693,54 @@ func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
 			page:      page,
 		}
 	}
+}
+
+// cmdFetchImages downloads thumbnails for the given file IDs and renders them
+// as terminal images. Non-image files and download failures are silently skipped.
+func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
+	if len(fileIDs) == 0 {
+		return nil
+	}
+	apiClient := m.api
+	return func() tea.Msg {
+		rendered := make(map[string]string, len(fileIDs))
+		// Limit concurrent processing to avoid hammering the server.
+		for _, fid := range fileIDs {
+			info, err := apiClient.GetFileInfo(fid)
+			if err != nil {
+				continue
+			}
+			// Only render image MIME types.
+			if !isImageMIME(info.MimeType) {
+				// Show a file placeholder keyed by file ID.
+				rendered[fid] = filePlaceholder(info)
+				continue
+			}
+			data, err := apiClient.DownloadFileThumbnail(fid)
+			if err != nil {
+				rendered[fid] = filePlaceholder(info)
+				continue
+			}
+			r := chat.RenderImageBytes(data, 48)
+			if r == "" {
+				r = filePlaceholder(info)
+			}
+			rendered[fid] = r
+		}
+		return messages.ImagesReadyMsg{Images: rendered}
+	}
+}
+
+func isImageMIME(mime string) bool {
+	return strings.HasPrefix(mime, "image/")
+}
+
+func filePlaceholder(info api.FileInfo) string {
+	icon := "📎"
+	if strings.HasPrefix(info.MimeType, "image/") {
+		icon = "🖼"
+	}
+	return icon + " " + info.Name + "\n"
 }
 
 func (m AppModel) cmdSendPost(channelID, text string) tea.Cmd {
@@ -628,8 +811,7 @@ func (m *AppModel) handleWSEvent(event api.WSEvent) tea.Cmd {
 }
 
 // handlePosted double-unmarshals the post from event.Data["post"] (JSON string)
-// and returns a NewPostMsg Cmd. All routing logic lives in the NewPostMsg handler
-// inside Update, so the test suite exercises the same code path as the WS flow.
+// and applies the update directly to the model — no extra goroutine hop.
 func (m *AppModel) handlePosted(event api.WSEvent) tea.Cmd {
 	post, ok := unmarshalPostFromEvent(event)
 	if !ok {
@@ -641,7 +823,12 @@ func (m *AppModel) handlePosted(event api.WSEvent) tea.Cmd {
 		return nil
 	}
 
-	return func() tea.Msg { return messages.NewPostMsg{Post: post} }
+	if post.ChannelID == m.chat.ChannelID() {
+		m.chat.AppendPost(post)
+	} else {
+		m.sidebar.IncrementUnread(post.ChannelID)
+	}
+	return nil
 }
 
 // handlePostEdited double-unmarshals the post and updates the chat if active.
@@ -662,6 +849,106 @@ func (m *AppModel) handleChannelViewed(event api.WSEvent) {
 	channelID, _ := event.Data["channel_id"].(string)
 	if channelID != "" {
 		m.sidebar.ClearUnread(channelID)
+	}
+}
+
+// handleMouse processes mouse events for sidebar drag-to-resize.
+// The sidebar border sits at column sidebarWidth-1 (0-indexed). Pressing on
+// that column starts a drag; motion while dragging updates sidebarWidth.
+func (m AppModel) handleMouse(msg tea.MouseMsg) AppModel {
+	const minSidebarWidth = 10
+	borderCol := m.sidebarWidth - 1
+
+	switch msg.Action {
+	case tea.MouseActionPress:
+		if msg.Button == tea.MouseButtonLeft && msg.X == borderCol {
+			m.dragging = true
+		}
+	case tea.MouseActionRelease:
+		m.dragging = false
+	case tea.MouseActionMotion:
+		if m.dragging && msg.Button == tea.MouseButtonLeft {
+			newWidth := msg.X + 1
+			maxWidth := m.layout.TotalWidth - 20
+			if maxWidth < minSidebarWidth {
+				maxWidth = minSidebarWidth
+			}
+			if newWidth < minSidebarWidth {
+				newWidth = minSidebarWidth
+			}
+			if newWidth > maxWidth {
+				newWidth = maxWidth
+			}
+			m.sidebarWidth = newWidth
+			m.layout = NewLayout(m.layout.TotalWidth, m.layout.TotalHeight, newWidth)
+			m.sidebar.SetWidth(newWidth)
+			m.chat.SetSize(m.layout.ChatWidth, m.layout.ChatHeight)
+			m.input.SetSize(m.layout.ChatWidth, m.layout.InputHeight)
+		}
+	}
+	return m
+}
+
+// cmdSearch fires parallel user + channel searches across all known teams.
+func (m AppModel) cmdSearch(query string) tea.Cmd {
+	apiClient := m.api
+	teams := m.teams
+	return func() tea.Msg {
+		var users []api.User
+		if u, err := apiClient.SearchUsers(query); err == nil {
+			users = u
+		}
+
+		// Search channels across all teams, deduplicate by channel ID.
+		seen := make(map[string]struct{})
+		var channels []api.Channel
+		for _, t := range teams {
+			chs, err := apiClient.SearchChannels(query, t.ID)
+			if err != nil {
+				continue
+			}
+			for _, ch := range chs {
+				if _, ok := seen[ch.ID]; ok {
+					continue
+				}
+				seen[ch.ID] = struct{}{}
+				channels = append(channels, ch)
+			}
+		}
+
+		return messages.SearchResultsMsg{Query: query, Users: users, Channels: channels}
+	}
+}
+
+// cmdCreateDirectChannel creates or opens a DM with the given user.
+func (m AppModel) cmdCreateDirectChannel(otherUserID string) tea.Cmd {
+	apiClient := m.api
+	return func() tea.Msg {
+		ch, err := apiClient.CreateDirectChannel(otherUserID)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		// Fetch the other user's username for display.
+		username := otherUserID
+		if users, err := apiClient.GetUsersByIDs([]string{otherUserID}); err == nil && len(users) > 0 {
+			username = users[0].Username
+		}
+		return directChannelReadyMsg{channel: ch, userID: otherUserID, username: username}
+	}
+}
+
+// cmdJoinChannel joins a public channel and fetches the full channel object.
+func (m AppModel) cmdJoinChannel(channelID string) tea.Cmd {
+	apiClient := m.api
+	return func() tea.Msg {
+		if err := apiClient.JoinChannel(channelID); err != nil {
+			return ErrorMsg{Err: err}
+		}
+		ch, err := apiClient.GetChannel(channelID)
+		if err != nil {
+			return ErrorMsg{Err: err}
+		}
+		return channelJoinedMsg{channel: ch}
 	}
 }
 

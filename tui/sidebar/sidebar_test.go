@@ -347,8 +347,9 @@ func TestMutedIconInView(t *testing.T) {
 	m.SetItems(items)
 
 	view := m.View()
-	if !strings.Contains(view, "🔇") {
-		t.Errorf("expected muted icon 🔇 in view, got:\n%s", view)
+	// Public muted channel uses ⊘ (the combined muted-public icon).
+	if !strings.Contains(view, "⊘") {
+		t.Errorf("expected muted icon ⊘ in view, got:\n%s", view)
 	}
 }
 
@@ -405,6 +406,23 @@ func TestRenderedWidthWithinBounds(t *testing.T) {
 		if w > styles.SidebarWidth {
 			t.Errorf("row exceeds SidebarWidth (%d): width=%d row=%q", styles.SidebarWidth, w, row)
 		}
+	}
+}
+
+// 13b. Rendered view has exactly 1 line per item (no word-wrap overflow).
+func TestRenderedRowsAreOneLine(t *testing.T) {
+	m := newModel()
+	m.SetHeight(10)
+	items := makeItems(20, "O") // more items than height → indicator row shown
+	m.SetItems(items)
+
+	view := m.View()
+	lines := strings.Split(view, "\n")
+
+	// visibleHeight = 10-1 = 9 items + 1 indicator = 10 lines.
+	want := 10
+	if len(lines) != want {
+		t.Errorf("expected %d rendered lines, got %d\nview:\n%s", want, len(lines), view)
 	}
 }
 

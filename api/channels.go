@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -78,6 +79,50 @@ func (c *Client) MarkChannelRead(channelID string) error {
 		return fmt.Errorf("MarkChannelRead: %w", err)
 	}
 	return nil
+}
+
+// CreateDirectChannel creates or returns the existing DM channel between the
+// current user and otherUserID.
+// POST /api/v4/channels/direct  body: ["myUserID","otherUserID"]
+func (c *Client) CreateDirectChannel(otherUserID string) (Channel, error) {
+	body, _ := json.Marshal([]string{c.userID, otherUserID})
+	data, err := c.Post("/api/v4/channels/direct", bytes.NewReader(body))
+	if err != nil {
+		return Channel{}, fmt.Errorf("CreateDirectChannel: %w", err)
+	}
+	var ch Channel
+	if err := json.Unmarshal(data, &ch); err != nil {
+		return Channel{}, fmt.Errorf("CreateDirectChannel: %w", err)
+	}
+	return ch, nil
+}
+
+// JoinChannel adds the current user to a public channel.
+// POST /api/v4/channels/{channelID}/members  body: {"user_id":"myUserID"}
+func (c *Client) JoinChannel(channelID string) error {
+	body, _ := json.Marshal(map[string]string{"user_id": c.userID})
+	_, err := c.Post(
+		fmt.Sprintf("/api/v4/channels/%s/members", url.PathEscape(channelID)),
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return fmt.Errorf("JoinChannel: %w", err)
+	}
+	return nil
+}
+
+// GetChannel fetches a single channel by ID.
+// GET /api/v4/channels/{channelID}
+func (c *Client) GetChannel(channelID string) (Channel, error) {
+	data, err := c.Get(fmt.Sprintf("/api/v4/channels/%s", url.PathEscape(channelID)))
+	if err != nil {
+		return Channel{}, fmt.Errorf("GetChannel: %w", err)
+	}
+	var ch Channel
+	if err := json.Unmarshal(data, &ch); err != nil {
+		return Channel{}, fmt.Errorf("GetChannel: %w", err)
+	}
+	return ch, nil
 }
 
 // GetUsersByIDs fetches multiple users in a single request.

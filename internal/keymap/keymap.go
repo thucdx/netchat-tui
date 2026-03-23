@@ -16,6 +16,9 @@ type KeyMap struct {
 	JumpToBottom key.Binding // G — jump to latest messages in chat
 	JumpToTop    key.Binding // gg — jump to top
 
+	// Search opens the search bar in the sidebar.
+	Search key.Binding
+
 	// Select opens the highlighted channel. Only active when sidebar is focused.
 	Select key.Binding
 
@@ -33,6 +36,10 @@ type KeyMap struct {
 	// Send submits the message. Only active when input is focused.
 	Send    key.Binding // Enter (in input mode)
 	Newline key.Binding // Shift+Enter (insert newline)
+
+	// ToggleName switches between contact name (first+last) and account name (username)
+	// for DM and group channels in the sidebar.
+	ToggleName key.Binding // n — toggle contact name / account name
 
 	// App
 	// Quit must only be matched when the sidebar is focused.
@@ -60,6 +67,10 @@ func DefaultKeyMap() KeyMap {
 		JumpToTop: key.NewBinding(
 			key.WithKeys("g"),
 			key.WithHelp("gg", "jump to top"),
+		),
+		Search: key.NewBinding(
+			key.WithKeys("/", "ctrl+f"),
+			key.WithHelp("/ ctrl+f", "search"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys("enter"),
@@ -109,18 +120,22 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
 		),
+		ToggleName: key.NewBinding(
+			key.WithKeys("n"),
+			key.WithHelp("n", "toggle name display"),
+		),
 	}
 }
 
 // ShortHelp returns the bindings shown in the mini help bar.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.JumpToTop, k.JumpToBottom, k.ScrollUp, k.ScrollDown, k.FocusInput, k.Quit}
+	return []key.Binding{k.Search, k.JumpToTop, k.JumpToBottom, k.ScrollUp, k.ScrollDown, k.FocusInput, k.Quit}
 }
 
 // FullHelp returns all bindings for the full help page.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.Select},
+		{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.Select, k.Search, k.ToggleName},
 		{k.FocusInput, k.FocusSidebar, k.NextPanel},
 		{k.ScrollUp, k.ScrollDown, k.PageUp, k.PageDown},
 		{k.Send, k.Newline, k.Quit, k.Help},
