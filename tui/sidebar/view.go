@@ -2,7 +2,6 @@ package sidebar
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -39,42 +38,25 @@ func Render(m Model) string {
 		return styles.SidebarStyle.Render("")
 	}
 
-	// Pass 1: sort a copy of items: DMs first, then Open, then Private.
-	sorted := make([]ChannelItem, len(m.items))
-	copy(sorted, m.items)
-	sort.Slice(sorted, func(i, j int) bool {
-		ti := channelTypeOrder(sorted[i].Channel.Type)
-		tj := channelTypeOrder(sorted[j].Channel.Type)
-		if ti != tj {
-			return ti < tj
-		}
-		return sorted[i].DisplayName < sorted[j].DisplayName
-	})
-
-	// Pass 2: compute the visible window and iterate only visible items.
+	// Items are pre-sorted by SetItems/IncrementUnread (DMs first, then by
+	// LastPostAt descending). Compute the visible window directly.
 	end := m.viewOffset + m.height
-	if end > len(sorted) {
-		end = len(sorted)
+	if end > len(m.items) {
+		end = len(m.items)
 	}
-	if m.viewOffset >= len(sorted) {
+	if m.viewOffset >= len(m.items) {
 		return styles.SidebarStyle.Render("")
 	}
-	visible := sorted[m.viewOffset:end]
+	visible := m.items[m.viewOffset:end]
 
-	// Resolve cursor and selected channel IDs for highlighting.
-	selectedID := ""
-	cursorID := ""
-	if m.selected >= 0 && m.selected < len(m.items) {
-		selectedID = m.items[m.selected].Channel.ID
-	}
-	if m.cursor >= 0 && m.cursor < len(m.items) {
-		cursorID = m.items[m.cursor].Channel.ID
-	}
+	// Resolve cursor index and selected index for highlighting.
+	cursorIdx := m.cursor
+	selectedIdx := m.selected
 
 	var lines []string
 	lastSection := ""
 
-	for _, item := range visible {
+	for i, item := range visible {
 		// Emit a section header only when the section changes within the visible window.
 		section := sectionFor(item.Channel.Type)
 		if section != lastSection {
@@ -82,8 +64,9 @@ func Render(m Model) string {
 			lastSection = section
 		}
 
-		isCursor := item.Channel.ID == cursorID
-		isSelected := item.Channel.ID == selectedID
+		absIdx := m.viewOffset + i
+		isCursor := absIdx == cursorIdx
+		isSelected := absIdx == selectedIdx
 
 		// Build the icon prefix.
 		var icon string
@@ -163,7 +146,7 @@ func Render(m Model) string {
 		default:
 			rowStyle = styles.ChannelNormal
 		}
-		_ = isSelected // selected channel is highlighted differently only via cursor
+		_ = isSelected // reserved: open channel could get a distinct style later
 
 		lines = append(lines, rowStyle.Render(rowContent))
 	}

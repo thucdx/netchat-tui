@@ -2,6 +2,8 @@ package sidebar
 
 import (
 	"regexp"
+	"sort"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/key"
@@ -52,6 +54,26 @@ func NewModel(keys keymap.KeyMap, userID string) Model {
 	}
 }
 
+// sortItems sorts m.items in-place: DMs first, then channels, each section
+// ordered by LastPostAt descending (most recently active first), then by
+// DisplayName for ties. This must be called whenever m.items changes so that
+// cursor indices stay aligned with the displayed order.
+func (m *Model) sortItems() {
+	sort.SliceStable(m.items, func(i, j int) bool {
+		ti := channelTypeOrder(m.items[i].Channel.Type)
+		tj := channelTypeOrder(m.items[j].Channel.Type)
+		if ti != tj {
+			return ti < tj
+		}
+		lpi := m.items[i].Channel.LastPostAt
+		lpj := m.items[j].Channel.LastPostAt
+		if lpi != lpj {
+			return lpi > lpj // most recent first
+		}
+		return m.items[i].DisplayName < m.items[j].DisplayName
+	})
+}
+
 // SetItems replaces the channel list (called after API fetch).
 // Preserves cursor/selected positions where possible.
 func (m *Model) SetItems(items []ChannelItem) {
@@ -60,6 +82,7 @@ func (m *Model) SetItems(items []ChannelItem) {
 		items[i].DisplayName = stripANSI(items[i].DisplayName)
 	}
 	m.items = items
+	m.sortItems()
 	// Clamp cursor to valid range.
 	if len(items) == 0 {
 		m.cursor = 0
@@ -102,12 +125,14 @@ func (m Model) SelectedChannel() *ChannelItem {
 	return &item
 }
 
-// IncrementUnread increments the unread count for the given channelID.
-// Called by AppModel when a WebSocket "posted" event arrives for an inactive channel.
+// IncrementUnread increments the unread count for the given channelID and
+// bumps its LastPostAt to now so it rises to the top of its section.
 func (m *Model) IncrementUnread(channelID string) {
 	for i := range m.items {
 		if m.items[i].Channel.ID == channelID {
 			m.items[i].UnreadCount++
+			m.items[i].Channel.LastPostAt = time.Now().UnixMilli()
+			m.sortItems()
 			return
 		}
 	}

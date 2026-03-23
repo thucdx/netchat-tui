@@ -22,43 +22,91 @@ go build -o netchat-tui .
 ./netchat-tui
 ```
 
-## First launch
+## First launch — getting your token
 
-On first run you will see a token prompt. To get your token:
+On first run you will see a token prompt.
 
-1. Open netchat.viettel.vn in a browser and log in.
+1. Log in to netchat.viettel.vn in a browser.
 2. Go to **Profile → Security → Personal Access Tokens** and create a new token.
-   Alternatively, open browser DevTools → Network, send any request, and copy the `Authorization: Bearer <token>` value.
+   (Or open DevTools → Network, copy the `Authorization: Bearer <value>` from any request.)
 3. Paste the token into the prompt and press **Enter**.
 
-The token is saved to `~/.config/netchat-tui/auth.json` (mode `0600`) and reused on subsequent launches.
+The token is saved to `~/.config/netchat-tui/auth.json` (mode `0600`) and reused on subsequent launches. To switch accounts, delete this file and restart.
+
+---
+
+## Layout
+
+```
+┌─────────────┬──────────────────────────────┐
+│  Sidebar    │  Chat pane                   │
+│             │                              │
+│  DIRECT     │  #general                    │
+│  @ Alice    │  ──────────────────────────  │
+│  @ Bob      │  Alice  10:30                │
+│             │    Hello world               │
+│  CHANNELS   │                              │
+│  # general  │  Bob  10:31                  │
+│  # random   │    Hi there!                 │
+│             │                              │
+│             ├──────────────────────────────┤
+│             │  > type a message here       │
+└─────────────┴──────────────────────────────┘
+```
+
+---
 
 ## Keybindings
 
+### Focus / navigation
+
 | Key | Action |
 |-----|--------|
-| `Tab` | Switch focus between sidebar and chat |
-| `j` / `k` | Move cursor down / up in sidebar |
-| `gg` | Jump to top of sidebar |
-| `G` | Jump to bottom of sidebar |
-| `Enter` | Open selected channel |
-| `↑` / `↓` | Scroll chat one line |
-| `Ctrl+U` / `Ctrl+D` | Scroll chat half page |
-| `PgUp` / `PgDn` | Scroll chat full page |
-| `Shift+Enter` | Insert newline in message |
+| `Tab` | Cycle focus: Sidebar → Chat → Input → Sidebar |
+| `i` or `a` | Jump directly to message input |
+| `Esc` | Return focus to sidebar (also dismisses error banner) |
+
+### Sidebar (channel list)
+
+Channels are ordered by most recent activity within each section (DMs first, then channels).
+
+| Key | Action |
+|-----|--------|
+| `j` or `↓` | Move cursor down |
+| `k` or `↑` | Move cursor up |
+| `G` | Jump to bottom of list |
+| `Enter` | Open highlighted channel |
+
+### Chat pane (message history)
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+U` | Scroll up half page |
+| `Ctrl+D` | Scroll down half page |
+| `Ctrl+B` | Page up |
+| `Ctrl+F` | Page down |
+| `k` or `↑` | Scroll up one line |
+| `j` or `↓` | Scroll down one line |
+| `G` | Jump to latest message |
+
+Scrolling to the top automatically loads older messages.
+
+### Message input
+
+| Key | Action |
+|-----|--------|
 | `Enter` | Send message |
-| `Esc` | Focus sidebar / dismiss error banner |
-| `Ctrl+C` | Quit |
+| `Shift+Enter` | Insert newline |
 
-## Configuration
+### App
 
-The only required configuration is the Bearer token set during first launch. Config is stored at:
+| Key | Action |
+|-----|--------|
+| `q` (sidebar focused) | Quit |
+| `Ctrl+C` | Quit from anywhere |
+| `?` | Show keybinding help |
 
-```
-~/.config/netchat-tui/auth.json
-```
-
-To log in as a different user, delete this file and restart.
+---
 
 ## Running tests
 
