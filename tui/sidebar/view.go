@@ -8,39 +8,14 @@ import (
 	"github.com/thucdx/netchat-tui/tui/styles"
 )
 
-// channelTypeOrder maps channel types to sort priority (lower = earlier).
-// D = Direct Message, G = Group Message, O = Open/Public, P = Private
-func channelTypeOrder(t string) int {
-	switch t {
-	case "D", "G":
-		return 0 // DMs and group messages together, before channels
-	case "O":
-		return 1
-	case "P":
-		return 2
-	default:
-		return 3
-	}
-}
-
-// sectionFor returns the section header label for a given channel type.
-func sectionFor(channelType string) string {
-	switch channelType {
-	case "D", "G":
-		return "DIRECT MESSAGES"
-	default:
-		return "CHANNELS"
-	}
-}
-
 // Render builds the sidebar string for the given model.
 func Render(m Model) string {
 	if len(m.items) == 0 {
 		return styles.SidebarStyle.Render("")
 	}
 
-	// Items are pre-sorted by SetItems/IncrementUnread (DMs first, then by
-	// LastPostAt descending). Compute the visible window directly.
+	// Items are pre-sorted by SetItems/IncrementUnread by LastPostAt descending.
+	// Compute the visible window directly.
 	end := m.viewOffset + m.height
 	if end > len(m.items) {
 		end = len(m.items)
@@ -55,16 +30,8 @@ func Render(m Model) string {
 	selectedIdx := m.selected
 
 	var lines []string
-	lastSection := ""
 
 	for i, item := range visible {
-		// Emit a section header only when the section changes within the visible window.
-		section := sectionFor(item.Channel.Type)
-		if section != lastSection {
-			lines = append(lines, styles.SectionHeaderStyle.Render(section))
-			lastSection = section
-		}
-
 		absIdx := m.viewOffset + i
 		isCursor := absIdx == cursorIdx
 		isSelected := absIdx == selectedIdx

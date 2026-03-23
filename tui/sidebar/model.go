@@ -13,7 +13,7 @@ import (
 )
 
 // defaultLimit is the maximum number of channels shown in the sidebar.
-const defaultLimit = 50
+const defaultLimit = 200
 
 // ansiEscape matches ANSI terminal escape sequences.
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[mABCDEFGHJKSTfhil]`)
@@ -82,13 +82,8 @@ func (m *Model) sortAndRebuild() {
 		selectedID = m.items[m.selected].Channel.ID
 	}
 
-	// Sort allItems: DMs first, then channels; within each section newest first.
+	// Sort allItems by LastPostAt descending; tiebreak by DisplayName ascending.
 	sort.SliceStable(m.allItems, func(i, j int) bool {
-		ti := channelTypeOrder(m.allItems[i].Channel.Type)
-		tj := channelTypeOrder(m.allItems[j].Channel.Type)
-		if ti != tj {
-			return ti < tj
-		}
 		lpi := m.allItems[i].Channel.LastPostAt
 		lpj := m.allItems[j].Channel.LastPostAt
 		if lpi != lpj {
@@ -228,6 +223,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					offset = 0
 				}
 				m.viewOffset = offset
+			}
+
+		case key.Matches(msg, m.keys.ScrollUp):
+			m.viewOffset -= m.height / 2
+			if m.viewOffset < 0 {
+				m.viewOffset = 0
+			}
+
+		case key.Matches(msg, m.keys.ScrollDown):
+			maxOffset := len(m.items) - m.height
+			if maxOffset < 0 {
+				maxOffset = 0
+			}
+			m.viewOffset += m.height / 2
+			if m.viewOffset > maxOffset {
+				m.viewOffset = maxOffset
 			}
 
 		case key.Matches(msg, m.keys.Select):

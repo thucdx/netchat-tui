@@ -389,6 +389,9 @@ func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 				continue // skip broken team, don't abort
 			}
 			for _, ch := range channels {
+				if ch.IsDeleted() {
+					continue
+				}
 				if _, seen := seenCh[ch.ID]; !seen {
 					seenCh[ch.ID] = struct{}{}
 					allChannels = append(allChannels, ch)
@@ -448,6 +451,10 @@ func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
 					if u, ok := userCache[otherID]; ok && u.Username != "" {
 						displayName = u.Username
+					} else if displayName == "" {
+						// User not in cache (e.g. deactivated account) — fall back to
+						// their user ID so the sidebar row is never blank.
+						displayName = otherID
 					}
 				}
 			case "G":

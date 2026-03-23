@@ -79,14 +79,6 @@ var (
 
 	MutedBadge = lipgloss.NewStyle().
 			Foreground(colorFgDim)
-
-	// SectionHeaderStyle is used for section labels such as "CHANNELS" and
-	// "DIRECT MESSAGES" inside the sidebar.
-	SectionHeaderStyle = lipgloss.NewStyle().
-				Foreground(colorFgDim).
-				Bold(true).
-				PaddingLeft(1).
-				MarginTop(1)
 )
 
 // Chat styles

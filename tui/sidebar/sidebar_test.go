@@ -41,10 +41,12 @@ func pressKey(m Model, msg tea.KeyMsg) Model {
 	return updated.(Model)
 }
 
-func keyJ() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")} }
-func keyK() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")} }
-func keyG() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")} }
-func keyEnter() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyEnter} }
+func keyJ() tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")} }
+func keyK() tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")} }
+func keyG() tea.KeyMsg      { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")} }
+func keyEnter() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyEnter} }
+func keyCtrlU() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyCtrlU} }
+func keyCtrlD() tea.KeyMsg  { return tea.KeyMsg{Type: tea.KeyCtrlD} }
 
 // ─── Model tests ───────────────────────────────────────────────────────────
 
@@ -215,31 +217,104 @@ func TestSelectedChannel_None(t *testing.T) {
 	}
 }
 
-// 9. Items with type "D" always appear before "O" and "P" in the view.
-func TestDMSortedFirst(t *testing.T) {
+// 9. Items are sorted by LastPostAt descending (most recent first).
+func TestSortedByRecency(t *testing.T) {
 	m := newModel()
-	// Mix types in intentionally unsorted order: O, D, P.
 	items := []ChannelItem{
-		{Channel: api.Channel{ID: "ch-o", DisplayName: "Open", Type: "O"}, DisplayName: "Open"},
-		{Channel: api.Channel{ID: "ch-d", DisplayName: "Direct", Type: "D"}, DisplayName: "Direct"},
-		{Channel: api.Channel{ID: "ch-p", DisplayName: "Private", Type: "P"}, DisplayName: "Private"},
+		{Channel: api.Channel{ID: "ch-o", DisplayName: "Open", Type: "O", LastPostAt: 100}, DisplayName: "Open"},
+		{Channel: api.Channel{ID: "ch-d", DisplayName: "Direct", Type: "D", LastPostAt: 300}, DisplayName: "Direct"},
+		{Channel: api.Channel{ID: "ch-p", DisplayName: "Private", Type: "P", LastPostAt: 200}, DisplayName: "Private"},
 	}
 	m.SetItems(items)
 
 	view := m.View()
 
 	dIdx := strings.Index(view, "Direct")
-	oIdx := strings.Index(view, "Open")
 	pIdx := strings.Index(view, "Private")
+	oIdx := strings.Index(view, "Open")
 
 	if dIdx < 0 || oIdx < 0 || pIdx < 0 {
 		t.Fatalf("view missing expected names: view=%q", view)
 	}
-	if dIdx >= oIdx {
-		t.Errorf("DM should appear before Open channel: dIdx=%d oIdx=%d", dIdx, oIdx)
+	if dIdx >= pIdx {
+		t.Errorf("Direct (300) should appear before Private (200): dIdx=%d pIdx=%d", dIdx, pIdx)
 	}
-	if oIdx >= pIdx {
-		t.Errorf("Open channel should appear before Private channel: oIdx=%d pIdx=%d", oIdx, pIdx)
+	if pIdx >= oIdx {
+		t.Errorf("Private (200) should appear before Open (100): pIdx=%d oIdx=%d", pIdx, oIdx)
+	}
+}
+
+// 9b. Ctrl+D scrolls viewOffset down by half-page without moving cursor.
+func TestCtrlDScrollsDown(t *testing.T) {
+	m := newModel()
+	m.SetHeight(4)
+	items := makeItems(10, "O")
+	m.SetItems(items)
+
+	// viewOffset starts at 0, cursor at 0.
+	m = pressKey(m, keyCtrlD())
+
+	// half-page = 4/2 = 2
+	if m.viewOffset != 2 {
+		t.Errorf("after ctrl+d: expected viewOffset=2, got %d", m.viewOffset)
+	}
+	// cursor should not have moved
+	if m.cursor != 0 {
+		t.Errorf("after ctrl+d: cursor should not move, got %d", m.cursor)
+	}
+}
+
+// 9c. Ctrl+D clamps at max offset.
+func TestCtrlDClampsAtBottom(t *testing.T) {
+	m := newModel()
+	m.SetHeight(4)
+	items := makeItems(6, "O")
+	m.SetItems(items)
+
+	// max offset = 6 - 4 = 2; pressing ctrl+d twice from 0 should clamp at 2.
+	m = pressKey(m, keyCtrlD())
+	m = pressKey(m, keyCtrlD())
+	m = pressKey(m, keyCtrlD())
+
+	if m.viewOffset != 2 {
+		t.Errorf("ctrl+d clamped: expected viewOffset=2, got %d", m.viewOffset)
+	}
+}
+
+// 9d. Ctrl+U scrolls viewOffset up by half-page.
+func TestCtrlUScrollsUp(t *testing.T) {
+	m := newModel()
+	m.SetHeight(4)
+	items := makeItems(10, "O")
+	m.SetItems(items)
+
+	// Move offset down first.
+	m = pressKey(m, keyCtrlD())
+	m = pressKey(m, keyCtrlD())
+	// viewOffset should be 4 (2 half-pages of 2).
+	if m.viewOffset != 4 {
+		t.Fatalf("setup: expected viewOffset=4, got %d", m.viewOffset)
+	}
+
+	// Now scroll up one half-page.
+	m = pressKey(m, keyCtrlU())
+	if m.viewOffset != 2 {
+		t.Errorf("after ctrl+u: expected viewOffset=2, got %d", m.viewOffset)
+	}
+}
+
+// 9e. Ctrl+U clamps at 0.
+func TestCtrlUClampsAtTop(t *testing.T) {
+	m := newModel()
+	m.SetHeight(4)
+	items := makeItems(10, "O")
+	m.SetItems(items)
+
+	m = pressKey(m, keyCtrlU())
+	m = pressKey(m, keyCtrlU())
+
+	if m.viewOffset != 0 {
+		t.Errorf("ctrl+u clamped: expected viewOffset=0, got %d", m.viewOffset)
 	}
 }
 
@@ -281,8 +356,8 @@ func TestUnreadBadgeInView(t *testing.T) {
 	}
 }
 
-// 12. View contains "DIRECT MESSAGES" and "CHANNELS" when both types present.
-func TestSectionHeaders(t *testing.T) {
+// 12. View does NOT contain section headers (flat list).
+func TestNoSectionHeaders(t *testing.T) {
 	m := newModel()
 	items := []ChannelItem{
 		{Channel: api.Channel{ID: "ch-d", DisplayName: "DM User", Type: "D"}, DisplayName: "DM User"},
@@ -291,11 +366,11 @@ func TestSectionHeaders(t *testing.T) {
 	m.SetItems(items)
 
 	view := m.View()
-	if !strings.Contains(view, "DIRECT MESSAGES") {
-		t.Errorf("expected 'DIRECT MESSAGES' section header in view, got:\n%s", view)
+	if strings.Contains(view, "DIRECT MESSAGES") {
+		t.Errorf("unexpected 'DIRECT MESSAGES' section header in view:\n%s", view)
 	}
-	if !strings.Contains(view, "CHANNELS") {
-		t.Errorf("expected 'CHANNELS' section header in view, got:\n%s", view)
+	if strings.Contains(view, "CHANNELS") {
+		t.Errorf("unexpected 'CHANNELS' section header in view:\n%s", view)
 	}
 }
 
