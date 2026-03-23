@@ -1,84 +1,109 @@
 # Agent Collaboration Protocol
 
-This document defines the roles, responsibilities, and communication protocol for the four agents building netchat-tui.
+This document defines the roles, responsibilities, and communication protocol for the five agents building netchat-tui.
 
 ---
 
-## Agents
+## Team Structure (Option B — Parallel Model)
 
 | Agent | Name | Responsibility |
 |-------|------|----------------|
-| **Coder** | `coder` | Implements features phase by phase, fixes bugs reported by other agents |
-| **Tester** | `tester` | Writes tests, runs them, reports results and failures back to Coder |
-| **Reviewer** | `reviewer` | Reviews code for quality, architecture, and best practices |
-| **Security** | `security` | Reviews code for security issues against the security plan in PLAN.md |
+| **Orchestrator** | `orchestrator` | Plans phases, assigns tasks, gates commits, updates TODO.md. Acts as team lead. |
+| **Builder-WS** | `builder-ws` | Implements WebSocket / real-time features: `api/websocket.go`, WS pump in `tui/app.go`, reconnect logic. |
+| **Builder-UX** | `builder-ux` | Implements UI polish and edge cases: DM name resolution, pagination, resize, error banner, mute detection. |
+| **QA** | `qa` | Writes and runs all tests (`go test ./...`), security audit against S1–S11. Combines Tester + Security roles. |
+| **Reviewer** | `reviewer` | Reviews code for architecture, Go idioms, and correctness. Gates each phase before Orchestrator commits. |
+
+---
+
+## Why This Structure
+
+- `builder-ws` (Phase 7) and `builder-ux` (Phase 8) touch independent files — they can work in parallel.
+- `qa` combines Tester and Security to reduce handoff overhead; security findings at this stage are well-scoped (S1–S11 checklist).
+- `reviewer` acts as a final gate before each commit, catching issues neither builder would self-review.
+- `orchestrator` is the only agent that commits code and updates `TODO.md`.
 
 ---
 
 ## Workflow per Phase
 
 ```
-Orchestrator starts phase
-       │
-       ▼
-  [Coder] implements the phase
-       │
-       ├──────────────────────────────────────┐
-       ▼                                      ▼
-  [Tester] writes & runs tests          [Security] reviews for security issues
-       │                                      │
-       ▼                                      ▼
-  reports pass/fail to Coder            reports findings to Coder
-       │                                      │
-       └──────────────┬───────────────────────┘
-                      ▼
-               [Reviewer] reviews final code
-                      │
-                      ▼
-               reports to Orchestrator
-                      │
-              ┌───────┴────────┐
-              ▼                ▼
-           All clear       Issues found
-              │                │
-              ▼                ▼
-        next phase      Coder fixes → re-test loop
-                               │
-                        if cannot agree
-                               │
-                               ▼
-                        Escalate to User
-                               │
-                               ▼
-                        User decides → document in requirements.md
+Orchestrator assigns tasks
+        │
+        ├─────────────────────────┐
+        ▼                         ▼
+  [builder-ws]             [builder-ux]
+  implements WS            implements UX
+  features                 features
+        │                         │
+        └──────────┬──────────────┘
+                   ▼
+              [qa] writes tests, runs go test ./..., audits S1–S11
+                   │
+                   ▼
+             [reviewer] reviews final code
+                   │
+                   ▼
+           [orchestrator] commits, updates TODO.md
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+       All clear        Issues found
+          │                 │
+          ▼                 ▼
+     next phase      builder fixes → re-test loop
+                            │
+                     if cannot agree
+                            │
+                            ▼
+                     Escalate to User
+                            │
+                            ▼
+                    User decides → document in requirements.md
 ```
 
 ---
 
 ## Communication Rules
 
-1. **Coder → Tester**: notify when a phase or feature is ready for testing. Include which files were changed.
-2. **Tester → Coder**: report each failing test with: test name, error message, and a suggested fix if obvious. If the fix requires a design change, escalate.
-3. **Security → Coder**: report each finding with: severity (High/Medium/Low), location (file:line), description, and recommended fix.
-4. **Reviewer → Coder**: report issues with: category (architecture/readability/performance), location, description, and recommendation.
-5. **Coder → all**: after fixing, notify which agents need to re-check.
-6. **Any agent → Orchestrator**: escalate when two agents disagree, when a fix would require changing requirements, or when blocked for more than one retry.
+1. **Orchestrator → builders**: assign tasks with file list and phase goal. Include which builder owns which area.
+2. **Builder → Orchestrator**: report when implementation is ready for QA. List files changed.
+3. **Builder → Builder**: coordinate on shared files (e.g., `tui/app.go`) — one builder at a time; notify Orchestrator of conflicts.
+4. **QA → Builder**: report each failing test: test name, error message, suggested fix. Report each security finding: severity, file:line, description, recommended fix.
+5. **Reviewer → Orchestrator**: report issues with: category (architecture/readability/performance/Go-idiom), location, description, recommendation.
+6. **Any agent → Orchestrator**: escalate when two agents disagree, when a fix requires changing requirements, or when blocked for more than one retry.
+
+---
+
+## File Ownership
+
+| Area | Owner |
+|------|-------|
+| `api/websocket.go` | builder-ws |
+| `tui/app.go` (WS pump, event handling) | builder-ws |
+| `api/channels.go` (DM batch fetch) | builder-ux |
+| `tui/chat/` (error banner) | builder-ux |
+| `tui/sidebar/` (pagination, mute) | builder-ux |
+| `tui/layout.go` (resize) | builder-ux |
+| `*_test.go`, `security_test.go` | qa |
+| `AGENTS.md`, `TODO.md` | orchestrator |
+| Code review (all files) | reviewer |
 
 ---
 
 ## Escalation Criteria
 
 Escalate to the user when:
-- Tester and Coder cannot agree on the correct behavior after 2 iterations
-- Security finding conflicts with a planned feature (e.g. "masked input breaks copy-paste UX")
-- Reviewer recommends a structural change that affects multiple phases
-- A bug is discovered that requires changing `requirements.md`
+- Builder-WS and Builder-UX conflict on a shared file (e.g. `tui/app.go`)
+- QA and a Builder cannot agree on correct behavior after 2 iterations
+- Reviewer recommends a structural change affecting multiple phases
+- A bug requires changing `requirements.md`
 
 ---
 
 ## Decision Documentation
 
-Every decision made by agents OR by the user during escalation must be appended to `requirements.md` under a `## Decisions Log` section with:
+Every decision made by agents OR by the user during escalation must be appended to `requirements.md` under the `## Decisions Log` section:
 
 ```
 ### [DATE] [AGENT or USER] — short title
@@ -91,11 +116,11 @@ Every decision made by agents OR by the user during escalation must be appended 
 
 ## Commit Rule
 
-After **every completed TODO item**, the Coder agent must create a git commit:
+Only the **Orchestrator** creates git commits:
 - Stage only the files changed for that item
-- Commit message format: `<type>(<scope>): <short description>` (e.g. `feat(config): add AuthConfig load/save`)
+- Commit message format: `<type>(<scope>): <short description>`
 - Never batch multiple TODO items into one commit
-- The Orchestrator updates `TODO.md` (`[ ]` → `[x]`) and includes it in the same commit
+- Update `TODO.md` (`[ ]` → `[x]`) in the same commit
 
 ---
 
@@ -103,11 +128,10 @@ After **every completed TODO item**, the Coder agent must create a git commit:
 
 A phase is complete only when ALL of the following are true:
 
-- [ ] Coder: all planned tasks for the phase are implemented
-- [ ] Tester: all tests for the phase pass (`go test ./...`)
-- [ ] Security: no High severity findings open
-- [ ] Reviewer: no blocking issues open
-- [ ] Orchestrator: updated TODO.md with `[x]` for completed items
+- [ ] builder-ws / builder-ux: all planned tasks implemented
+- [ ] qa: all tests pass (`go test ./...`), no High security findings open
+- [ ] reviewer: no blocking issues open
+- [ ] orchestrator: TODO.md updated with `[x]` for completed items
 
 ---
 
@@ -115,7 +139,7 @@ A phase is complete only when ALL of the following are true:
 
 When the Orchestrator starts a phase, each agent receives:
 - The phase number and goal
-- The list of files to work on (from PLAN.md)
+- The list of files to work on (from PLAN.md and File Ownership table above)
 - A reference to this file (AGENTS.md) for protocol
 - A reference to PLAN.md, TODO.md, and requirements.md for context
 
