@@ -11,13 +11,6 @@ import "github.com/thucdx/netchat-tui/api"
 // ChannelSelectedMsg is emitted by the sidebar when the user opens a channel.
 type ChannelSelectedMsg struct{ ChannelID string }
 
-// PostsLoadedMsg is emitted after a channel's post history has been fetched.
-type PostsLoadedMsg struct {
-	ChannelID   string
-	ChannelName string
-	Posts       api.PostList
-}
-
 // NewPostMsg carries a single new post received via WebSocket.
 type NewPostMsg struct{ Post api.Post }
 

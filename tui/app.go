@@ -42,6 +42,11 @@ type postsReadyMsg struct {
 
 type postSentMsg struct{ post api.Post }
 
+type wsConnectedMsg struct {
+	ws     *api.WSClient
+	cancel context.CancelFunc
+}
+
 // morePostsReadyMsg carries older posts fetched for pagination.
 type morePostsReadyMsg struct {
 	channelID string
@@ -100,7 +105,8 @@ func NewAppModel(apiClient *api.Client) AppModel {
 // Init implements tea.Model.
 func (m AppModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{
-		m.chat.Init(), // starts spinner tick
+		m.chat.Init(),  // starts spinner tick
+		m.input.Init(), // starts textarea blink cursor
 	}
 	if m.api != nil {
 		cmds = append(cmds, m.cmdLoadTeam())
@@ -201,12 +207,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case postsReadyMsg:
 		m.chat.LoadPosts(msg.channelID, msg.channelName, msg.posts, make(map[string]api.User))
-		// Mark channel as read in background (fire and forget).
+		// Mark channel as read (fire and forget via tea.Cmd — returns nil on completion).
+		var markRead tea.Cmd
 		if m.api != nil {
+			client := m.api
 			channelID := msg.channelID
-			go func() { _ = m.api.MarkChannelRead(channelID) }() //nolint:errcheck
+			markRead = func() tea.Msg {
+				_ = client.MarkChannelRead(channelID)
+				return nil
+			}
 		}
-		return m, nil
+		return m, markRead
 
 	// ── Sending messages ──────────────────────────────────────────────────────
 
@@ -250,6 +261,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebar.IncrementUnread(msg.Post.ChannelID)
 		}
 		return m, nil
+
+	// ── WebSocket connection ────────────────────────────────────────────────
+
+	case wsConnectedMsg:
+		m.ws = msg.ws
+		m.wsCancel = msg.cancel
+		return m, m.waitForWSEvent()
 
 	// ── WebSocket event dispatch ─────────────────────────────────────────────
 
@@ -307,6 +325,14 @@ func (m AppModel) tickSubModels(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	inputResult, cmd := m.input.Update(msg)
+	if im, ok := inputResult.(input.Model); ok {
+		m.input = im
+	}
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -339,8 +365,10 @@ func (m AppModel) View() string {
 // ── API commands ──────────────────────────────────────────────────────────────
 
 func (m AppModel) cmdLoadTeam() tea.Cmd {
+	client := m.api
+	userID := m.userID
 	return func() tea.Msg {
-		team, err := m.api.GetFirstTeam(m.userID)
+		team, err := client.GetFirstTeam(userID)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
@@ -460,27 +488,25 @@ func (m AppModel) cmdSendPost(channelID, text string) tea.Cmd {
 // ── WebSocket commands ────────────────────────────────────────────────────────
 
 // cmdStartWS creates a WSClient from the HTTP client and connects with retry.
-// On success it returns a waitForWSEvent Cmd to start the event pump.
-func (m *AppModel) cmdStartWS() tea.Cmd {
+// On success it returns a wsConnectedMsg so the live model stores the client.
+func (m AppModel) cmdStartWS() tea.Cmd {
+	apiClient := m.api
 	return func() tea.Msg {
-		ws, err := api.NewWSClientFromClient(m.api)
+		ws, err := api.NewWSClientFromClient(apiClient)
 		if err != nil {
 			log.Printf("ws: failed to create client: %v", err)
 			return nil
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		m.wsCancel = cancel
 
 		if err := api.ConnectWithRetry(ctx, ws); err != nil {
 			log.Printf("ws: connect failed: %v", err)
 			cancel()
 			return nil
 		}
-		m.ws = ws
 
-		// Return the first waitForWSEvent to kick off the pump.
-		return messages.WSEventMsg{Event: api.WSEvent{Event: "_connected"}}
+		return wsConnectedMsg{ws: ws, cancel: cancel}
 	}
 }
 

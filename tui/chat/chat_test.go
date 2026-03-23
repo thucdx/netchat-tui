@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/thucdx/netchat-tui/api"
 	"github.com/thucdx/netchat-tui/internal/keymap"
 )
 
 // newTestModel returns a Model wired up for testing (no real terminal needed).
 func newTestModel() Model {
-	km := keymap.KeyMap{}
+	km := keymap.DefaultKeyMap()
 	m := NewModel(km)
 	// Give the viewport a non-zero size so AtBottom()/GotoBottom() work correctly.
 	m.viewport = viewport.New(80, 20)
@@ -308,5 +309,222 @@ func TestResolveUsername_NicknamePreferred(t *testing.T) {
 	result := resolveUsername("u1", cache)
 	if result != "Cool Nick" {
 		t.Errorf("resolveUsername: got %q, want 'Cool Nick' (Nickname should take priority)", result)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 14. PrependPosts – older posts inserted at top, chronological
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestPrependPosts_InsertsAtTop(t *testing.T) {
+	m := newTestModel()
+	initial := []api.Post{
+		{ID: "c", UserID: "u1", Message: "recent", CreateAt: 300},
+	}
+	m.LoadPosts("ch1", "general", makePostList(initial), nil)
+
+	if len(m.posts) != 1 {
+		t.Fatalf("precondition: expected 1 post, got %d", len(m.posts))
+	}
+
+	older := []api.Post{
+		{ID: "a", UserID: "u1", Message: "oldest", CreateAt: 100},
+		{ID: "b", UserID: "u1", Message: "middle", CreateAt: 200},
+	}
+	m.PrependPosts(makePostList(older), 1)
+
+	if len(m.posts) != 3 {
+		t.Fatalf("expected 3 posts after prepend, got %d", len(m.posts))
+	}
+	// Oldest should be first.
+	if m.posts[0].ID != "a" {
+		t.Errorf("post[0] should be 'a' (oldest), got %q", m.posts[0].ID)
+	}
+	if m.posts[1].ID != "b" {
+		t.Errorf("post[1] should be 'b', got %q", m.posts[1].ID)
+	}
+	if m.posts[2].ID != "c" {
+		t.Errorf("post[2] should be 'c' (newest), got %q", m.posts[2].ID)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 15. PrependPosts – duplicates are filtered out
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestPrependPosts_Deduplicates(t *testing.T) {
+	m := newTestModel()
+	initial := []api.Post{
+		{ID: "a", UserID: "u1", Message: "existing", CreateAt: 100},
+	}
+	m.LoadPosts("ch1", "general", makePostList(initial), nil)
+
+	// Prepend the same post ID — should not create a duplicate.
+	dupe := []api.Post{
+		{ID: "a", UserID: "u1", Message: "existing", CreateAt: 100},
+		{ID: "b", UserID: "u1", Message: "new older", CreateAt: 50},
+	}
+	m.PrependPosts(makePostList(dupe), 1)
+
+	if len(m.posts) != 2 {
+		t.Fatalf("expected 2 posts (1 new + 1 existing), got %d", len(m.posts))
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 16. PrependPosts – deleted posts are filtered out
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestPrependPosts_DeletedFiltered(t *testing.T) {
+	m := newTestModel()
+	m.LoadPosts("ch1", "general", makePostList(nil), nil)
+
+	older := []api.Post{
+		{ID: "alive", UserID: "u1", Message: "ok", CreateAt: 50},
+		{ID: "dead", UserID: "u1", Message: "deleted", CreateAt: 40, DeleteAt: 999},
+	}
+	m.PrependPosts(makePostList(older), 1)
+
+	if len(m.posts) != 1 {
+		t.Fatalf("expected 1 post (deleted filtered), got %d", len(m.posts))
+	}
+	if m.posts[0].ID != "alive" {
+		t.Errorf("expected post 'alive', got %q", m.posts[0].ID)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 17. PrependPosts – empty result is a no-op
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestPrependPosts_EmptyNoOp(t *testing.T) {
+	m := newTestModel()
+	initial := []api.Post{
+		{ID: "a", UserID: "u1", Message: "hello", CreateAt: 100},
+	}
+	m.LoadPosts("ch1", "general", makePostList(initial), nil)
+
+	m.PrependPosts(makePostList(nil), 1)
+
+	if len(m.posts) != 1 {
+		t.Fatalf("expected 1 post unchanged, got %d", len(m.posts))
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 18. SetChannelInfo — sets channel ID and name without clearing posts
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestSetChannelInfo(t *testing.T) {
+	m := newTestModel()
+	initial := []api.Post{
+		{ID: "a", UserID: "u1", Message: "hello", CreateAt: 100},
+	}
+	m.LoadPosts("ch1", "general", makePostList(initial), nil)
+
+	m.SetChannelInfo("ch2", "Random")
+
+	if m.ChannelID() != "ch2" {
+		t.Errorf("ChannelID should be 'ch2', got %q", m.ChannelID())
+	}
+	if m.channelName != "Random" {
+		t.Errorf("channelName should be 'Random', got %q", m.channelName)
+	}
+	// Posts should not be cleared.
+	if len(m.posts) != 1 {
+		t.Errorf("posts should not be cleared by SetChannelInfo, got %d", len(m.posts))
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 19. SetError — sets and clears error banner
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestSetError(t *testing.T) {
+	m := newTestModel()
+
+	m.SetError(nil)
+	if m.err != nil {
+		t.Error("SetError(nil) should clear error")
+	}
+
+	m.SetError(errForTest("timeout"))
+	if m.err == nil {
+		t.Fatal("SetError should set error")
+	}
+	if m.err.Error() != "timeout" {
+		t.Errorf("expected error 'timeout', got %q", m.err.Error())
+	}
+
+	// View should include the error.
+	view := m.View()
+	if !strings.Contains(view, "timeout") {
+		t.Error("View should display the error banner")
+	}
+
+	// Clear the error.
+	m.SetError(nil)
+	if m.err != nil {
+		t.Error("SetError(nil) should clear error")
+	}
+}
+
+// errForTest creates a simple error for testing.
+type errForTest string
+
+func (e errForTest) Error() string { return string(e) }
+
+// ────────────────────────────────────────────────────────────────────────────
+// 20. Error banner dismiss — Esc key clears the error
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestErrorBannerDismiss(t *testing.T) {
+	// Use DefaultKeyMap so that Esc (FocusSidebar) key matches.
+	km := keymap.DefaultKeyMap()
+	m := NewModel(km)
+	m.viewport = viewport.New(80, 20)
+	m.SetError(errForTest("some error"))
+	m.width = 80
+	m.height = 20
+
+	if m.err == nil {
+		t.Fatal("precondition: error should be set")
+	}
+
+	// Press Esc (FocusSidebar key) to dismiss the error banner.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = result.(Model)
+
+	if m.err != nil {
+		t.Errorf("Esc should dismiss the error banner, but error is still: %v", m.err)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 21. FormatTimestamp — epoch 0 (edge case)
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestFormatTimestamp_Epoch(t *testing.T) {
+	result := FormatTimestamp(0)
+	// Epoch (1970-01-01) should render as DD/MM HH:MM format (very old).
+	if len(result) == 0 {
+		t.Error("FormatTimestamp(0) should return a non-empty string")
+	}
+	if strings.HasPrefix(result, "Yesterday") {
+		t.Error("epoch should not be 'Yesterday'")
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 22. FormatTimestamp — future timestamp (edge case)
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestFormatTimestamp_Future(t *testing.T) {
+	// A timestamp 1 hour in the future should render as today's HH:MM.
+	future := time.Now().Add(1 * time.Hour).UnixMilli()
+	result := FormatTimestamp(future)
+
+	if len(result) != 5 || result[2] != ':' {
+		t.Errorf("future timestamp should render as HH:MM, got %q", result)
 	}
 }
