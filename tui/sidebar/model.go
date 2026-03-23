@@ -12,6 +12,9 @@ import (
 	"github.com/thucdx/netchat-tui/internal/messages"
 )
 
+// defaultLimit is the maximum number of channels shown in the sidebar.
+const defaultLimit = 50
+
 // ansiEscape matches ANSI terminal escape sequences.
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[mABCDEFGHJKSTfhil]`)
 
@@ -31,20 +34,22 @@ type ChannelItem struct {
 
 // Model is the sidebar Bubbletea sub-model.
 type Model struct {
-	items      []ChannelItem
-	cursor     int              // highlighted row index
-	selected   int              // currently open channel index (-1 = none)
-	viewOffset int              // virtual scroll: first visible item index
-	height     int              // visible rows available (set by AppModel on resize)
+	allItems   []ChannelItem     // full sorted list of all channels
+	items      []ChannelItem     // top-limit slice of allItems (displayed)
+	limit      int               // max channels to show (default 50)
+	cursor     int               // index into items
+	selected   int               // index into items (-1 = none)
+	viewOffset int               // virtual scroll: first visible item index
+	height     int               // visible rows available (set by AppModel on resize)
 	keys       keymap.KeyMap
-	userID     string           // current user ID (to resolve DM names)
-	userCache  map[string]api.User // keyed by userID for DM name resolution
+	userID     string            // current user ID (to resolve DM names)
+	userCache  map[string]api.User
 }
 
 // NewModel returns an empty sidebar model.
 func NewModel(keys keymap.KeyMap, userID string) Model {
 	return Model{
-		items:     nil,
+		limit:     defaultLimit,
 		cursor:    0,
 		selected:  -1,
 		height:    20,
@@ -54,50 +59,71 @@ func NewModel(keys keymap.KeyMap, userID string) Model {
 	}
 }
 
-// sortItems sorts m.items in-place: DMs first, then channels, each section
-// ordered by LastPostAt descending (most recently active first), then by
-// DisplayName for ties. This must be called whenever m.items changes so that
-// cursor indices stay aligned with the displayed order.
-func (m *Model) sortItems() {
-	sort.SliceStable(m.items, func(i, j int) bool {
-		ti := channelTypeOrder(m.items[i].Channel.Type)
-		tj := channelTypeOrder(m.items[j].Channel.Type)
+// SetLimit changes the maximum number of channels displayed.
+func (m *Model) SetLimit(n int) {
+	if n < 1 {
+		n = 1
+	}
+	m.limit = n
+	m.sortAndRebuild()
+}
+
+// sortAndRebuild sorts allItems in-place, slices it to the configured limit,
+// and re-anchors cursor and selected to the same channel IDs. Call this after
+// any mutation to allItems so that the displayed list and indices stay consistent.
+func (m *Model) sortAndRebuild() {
+	// Capture IDs before reordering.
+	cursorID := ""
+	if m.cursor >= 0 && m.cursor < len(m.items) {
+		cursorID = m.items[m.cursor].Channel.ID
+	}
+	selectedID := ""
+	if m.selected >= 0 && m.selected < len(m.items) {
+		selectedID = m.items[m.selected].Channel.ID
+	}
+
+	// Sort allItems: DMs first, then channels; within each section newest first.
+	sort.SliceStable(m.allItems, func(i, j int) bool {
+		ti := channelTypeOrder(m.allItems[i].Channel.Type)
+		tj := channelTypeOrder(m.allItems[j].Channel.Type)
 		if ti != tj {
 			return ti < tj
 		}
-		lpi := m.items[i].Channel.LastPostAt
-		lpj := m.items[j].Channel.LastPostAt
+		lpi := m.allItems[i].Channel.LastPostAt
+		lpj := m.allItems[j].Channel.LastPostAt
 		if lpi != lpj {
 			return lpi > lpj // most recent first
 		}
-		return m.items[i].DisplayName < m.items[j].DisplayName
+		return m.allItems[i].DisplayName < m.allItems[j].DisplayName
 	})
-}
 
-// SetItems replaces the channel list (called after API fetch).
-// Preserves cursor/selected positions where possible.
-func (m *Model) SetItems(items []ChannelItem) {
-	// Strip ANSI escape sequences from server-supplied display names.
-	for i := range items {
-		items[i].DisplayName = stripANSI(items[i].DisplayName)
+	// Slice to limit.
+	n := m.limit
+	if n > len(m.allItems) {
+		n = len(m.allItems)
 	}
-	m.items = items
-	m.sortItems()
-	// Clamp cursor to valid range.
-	if len(items) == 0 {
-		m.cursor = 0
-		m.selected = -1
-		m.viewOffset = 0
-		return
+	m.items = m.allItems[:n]
+
+	// Re-anchor cursor by ID.
+	m.cursor = 0
+	for i, item := range m.items {
+		if item.Channel.ID == cursorID {
+			m.cursor = i
+			break
+		}
 	}
-	if m.cursor >= len(items) {
-		m.cursor = len(items) - 1
+
+	// Re-anchor selected by ID (-1 if it fell out of the top-N window).
+	m.selected = -1
+	for i, item := range m.items {
+		if item.Channel.ID == selectedID {
+			m.selected = i
+			break
+		}
 	}
-	if m.selected >= len(items) {
-		m.selected = -1
-	}
+
 	// Clamp viewOffset.
-	maxOffset := len(items) - m.height
+	maxOffset := len(m.items) - m.height
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -106,7 +132,19 @@ func (m *Model) SetItems(items []ChannelItem) {
 	}
 }
 
-// Items returns the current channel items (used by tests to verify state).
+// SetItems replaces the full channel list (called after API fetch).
+func (m *Model) SetItems(items []ChannelItem) {
+	for i := range items {
+		items[i].DisplayName = stripANSI(items[i].DisplayName)
+	}
+	m.allItems = items
+	m.cursor = 0
+	m.selected = -1
+	m.viewOffset = 0
+	m.sortAndRebuild()
+}
+
+// Items returns the currently displayed channel items (top-limit after sort).
 func (m Model) Items() []ChannelItem {
 	return m.items
 }
@@ -127,22 +165,24 @@ func (m Model) SelectedChannel() *ChannelItem {
 
 // IncrementUnread increments the unread count for the given channelID and
 // bumps its LastPostAt to now so it rises to the top of its section.
+// Searches allItems so channels outside the current top-N window are found too.
 func (m *Model) IncrementUnread(channelID string) {
-	for i := range m.items {
-		if m.items[i].Channel.ID == channelID {
-			m.items[i].UnreadCount++
-			m.items[i].Channel.LastPostAt = time.Now().UnixMilli()
-			m.sortItems()
+	for i := range m.allItems {
+		if m.allItems[i].Channel.ID == channelID {
+			m.allItems[i].UnreadCount++
+			m.allItems[i].Channel.LastPostAt = time.Now().UnixMilli()
+			m.sortAndRebuild()
 			return
 		}
 	}
 }
 
 // ClearUnread sets the unread count to 0 for the given channelID.
+// Searches allItems so channels outside the current top-N window are found.
 func (m *Model) ClearUnread(channelID string) {
-	for i := range m.items {
-		if m.items[i].Channel.ID == channelID {
-			m.items[i].UnreadCount = 0
+	for i := range m.allItems {
+		if m.allItems[i].Channel.ID == channelID {
+			m.allItems[i].UnreadCount = 0
 			return
 		}
 	}
@@ -164,7 +204,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor >= len(m.items) {
 					m.cursor = len(m.items) - 1
 				}
-				// Advance viewOffset if cursor scrolled past visible area.
 				if m.cursor > m.viewOffset+m.height-1 {
 					m.viewOffset = m.cursor - m.height + 1
 				}
@@ -176,7 +215,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor < 0 {
 					m.cursor = 0
 				}
-				// Retreat viewOffset if cursor scrolled before visible area.
 				if m.cursor < m.viewOffset {
 					m.viewOffset = m.cursor
 				}
