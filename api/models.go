@@ -19,7 +19,7 @@ type Team struct {
 }
 
 // Channel represents a Mattermost channel.
-// Type: "D" = Direct Message, "O" = Open/Public, "P" = Private
+// Type: "D" = Direct Message, "G" = Group Message, "O" = Open/Public, "P" = Private
 type Channel struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`

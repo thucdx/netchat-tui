@@ -31,8 +31,6 @@ const (
 
 // app-internal message types (not exported; only used within this file)
 
-type teamLoadedMsg struct{ teamID string }
-
 type channelsLoadedMsg struct{ items []sidebar.ChannelItem }
 
 type postsReadyMsg struct {
@@ -77,7 +75,6 @@ type AppModel struct {
 	ws      *api.WSClient // nil until WS connects
 	wsCancel context.CancelFunc // cancels WS reconnect loop
 	userID  string
-	teamID  string
 	ready   bool
 
 	sidebar sidebar.Model
@@ -117,7 +114,7 @@ func (m AppModel) Init() tea.Cmd {
 		m.input.Init(), // starts textarea blink cursor
 	}
 	if m.api != nil {
-		cmds = append(cmds, m.cmdLoadTeam())
+		cmds = append(cmds, m.cmdLoadAllChannels(), m.cmdStartWS())
 	}
 	return tea.Batch(cmds...)
 }
@@ -182,13 +179,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.routeKey(msg)
 
 	// ── Data loading ──────────────────────────────────────────────────────────
-
-	case teamLoadedMsg:
-		m.teamID = msg.teamID
-		if m.api != nil {
-			return m, tea.Batch(m.cmdLoadChannels(), m.cmdStartWS())
-		}
-		return m, nil
 
 	case channelsLoadedMsg:
 		m.sidebar.SetItems(msg.items)
@@ -372,41 +362,54 @@ func (m AppModel) View() string {
 
 // ── API commands ──────────────────────────────────────────────────────────────
 
-func (m AppModel) cmdLoadTeam() tea.Cmd {
-	client := m.api
+// cmdLoadAllChannels fetches channels across ALL teams the user belongs to,
+// deduplicates by channel ID, resolves DM display names, and returns the
+// full list as a channelsLoadedMsg.
+//
+// Previously the app fetched only from teams[0], which meant channels in
+// other teams (and sometimes all public/private channels) were never shown.
+func (m AppModel) cmdLoadAllChannels() tea.Cmd {
 	userID := m.userID
-	return func() tea.Msg {
-		team, err := client.GetFirstTeam(userID)
-		if err != nil {
-			return ErrorMsg{Err: err}
-		}
-		return teamLoadedMsg{teamID: team.ID}
-	}
-}
-
-func (m AppModel) cmdLoadChannels() tea.Cmd {
-	userID := m.userID
-	teamID := m.teamID
 	apiClient := m.api
 	return func() tea.Msg {
-		channels, err := apiClient.GetChannelsForUser(userID, teamID)
-		if err != nil {
-			return ErrorMsg{Err: err}
-		}
-		members, err := apiClient.GetChannelMembersForUser(userID, teamID)
+		teams, err := apiClient.GetTeamsForUser(userID)
 		if err != nil {
 			return ErrorMsg{Err: err}
 		}
 
-		// Build member lookup map.
-		memberByChannelID := make(map[string]api.ChannelMember, len(members))
-		for _, mb := range members {
-			memberByChannelID[mb.ChannelID] = mb
+		// Aggregate channels and members across all teams, dedup by channel ID.
+		seenCh := make(map[string]struct{})
+		seenMb := make(map[string]struct{})
+		var allChannels []api.Channel
+		memberByChannelID := make(map[string]api.ChannelMember)
+
+		for _, team := range teams {
+			channels, err := apiClient.GetChannelsForUser(userID, team.ID)
+			if err != nil {
+				continue // skip broken team, don't abort
+			}
+			for _, ch := range channels {
+				if _, seen := seenCh[ch.ID]; !seen {
+					seenCh[ch.ID] = struct{}{}
+					allChannels = append(allChannels, ch)
+				}
+			}
+
+			members, err := apiClient.GetChannelMembersForUser(userID, team.ID)
+			if err != nil {
+				continue
+			}
+			for _, mb := range members {
+				if _, seen := seenMb[mb.ChannelID]; !seen {
+					seenMb[mb.ChannelID] = struct{}{}
+					memberByChannelID[mb.ChannelID] = mb
+				}
+			}
 		}
 
-		// Collect user IDs from DM channels for batch resolution.
+		// Collect user IDs from DM channels for batch display-name resolution.
 		dmUserIDs := make(map[string]struct{})
-		for _, ch := range channels {
+		for _, ch := range allChannels {
 			if ch.Type == "D" {
 				if otherID := dmOtherUserID(ch.Name, userID); otherID != "" {
 					dmUserIDs[otherID] = struct{}{}
@@ -414,15 +417,13 @@ func (m AppModel) cmdLoadChannels() tea.Cmd {
 			}
 		}
 
-		// Batch fetch DM users for display name resolution.
 		dmUserCache := make(map[string]api.User)
 		if len(dmUserIDs) > 0 {
 			ids := make([]string, 0, len(dmUserIDs))
 			for id := range dmUserIDs {
 				ids = append(ids, id)
 			}
-			users, err := apiClient.GetUsersByIDs(ids)
-			if err == nil {
+			if users, err := apiClient.GetUsersByIDs(ids); err == nil {
 				for _, u := range users {
 					dmUserCache[u.ID] = u
 				}
@@ -430,8 +431,8 @@ func (m AppModel) cmdLoadChannels() tea.Cmd {
 			// On error, fall back to channel DisplayName (no crash).
 		}
 
-		items := make([]sidebar.ChannelItem, 0, len(channels))
-		for _, ch := range channels {
+		items := make([]sidebar.ChannelItem, 0, len(allChannels))
+		for _, ch := range allChannels {
 			mb := memberByChannelID[ch.ID]
 			displayName := ch.DisplayName
 			if ch.Type == "D" {

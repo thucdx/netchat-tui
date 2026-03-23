@@ -9,10 +9,11 @@ import (
 )
 
 // channelTypeOrder maps channel types to sort priority (lower = earlier).
+// D = Direct Message, G = Group Message, O = Open/Public, P = Private
 func channelTypeOrder(t string) int {
 	switch t {
-	case "D":
-		return 0
+	case "D", "G":
+		return 0 // DMs and group messages together, before channels
 	case "O":
 		return 1
 	case "P":
@@ -25,7 +26,7 @@ func channelTypeOrder(t string) int {
 // sectionFor returns the section header label for a given channel type.
 func sectionFor(channelType string) string {
 	switch channelType {
-	case "D":
+	case "D", "G":
 		return "DIRECT MESSAGES"
 	default:
 		return "CHANNELS"
@@ -76,6 +77,8 @@ func Render(m Model) string {
 		switch item.Channel.Type {
 		case "D":
 			icon += "@"
+		case "G":
+			icon += "👥"
 		case "O":
 			icon += "#"
 		case "P":
