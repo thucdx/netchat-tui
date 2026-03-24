@@ -9,7 +9,12 @@ package messages
 import "github.com/thucdx/netchat-tui/api"
 
 // ChannelSelectedMsg is emitted by the sidebar when the user opens a channel.
-type ChannelSelectedMsg struct{ ChannelID string }
+// FocusOnOpen signals whether the app should shift keyboard focus to the chat pane.
+// Enter sets it true; preview (p) sets it false (sidebar retains focus).
+type ChannelSelectedMsg struct {
+	ChannelID   string
+	FocusOnOpen bool
+}
 
 // NewPostMsg carries a single new post received via WebSocket.
 type NewPostMsg struct{ Post api.Post }
@@ -35,9 +40,6 @@ type WSEventMsg struct{ Event api.WSEvent }
 type ImagesReadyMsg struct {
 	// Images maps Mattermost file IDs to small inline half-block renders.
 	Images map[string]string
-	// ImageBytes maps Mattermost file IDs to raw thumbnail bytes.
-	// Stored so the popup can re-render at full popup dimensions on demand.
-	ImageBytes map[string][]byte
 	// FileInfos maps Mattermost file IDs to their metadata.
 	FileInfos map[string]api.FileInfo
 }

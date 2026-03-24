@@ -1376,74 +1376,12 @@ func TestOpenAttachmentForCursor_NoCursorPost(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Image popup state tests (Task #17)
+// Attachment open routing tests
 // ────────────────────────────────────────────────────────────────────────────
 
-// TestIsPopupActive_Default confirms that a new model has no popup active.
-func TestIsPopupActive_Default(t *testing.T) {
-	m := newTestModel()
-
-	if m.IsPopupActive() {
-		t.Error("IsPopupActive should be false for a new model")
-	}
-}
-
-// TestActivateImagePopup confirms that ActivateImagePopup sets popup state
-// and the View returns the popup (not the viewport).
-func TestActivateImagePopup(t *testing.T) {
-	m := newTestModel()
-	m.LoadPosts("ch1", "general", makePostList([]api.Post{
-		{ID: "1", UserID: "u1", Message: "hello", CreateAt: 100},
-	}), nil)
-	m.SetSize(80, 20)
-
-	testImage := "test image content"
-	testTitle := "file.png"
-	m.ActivateImagePopup(testImage, testTitle)
-
-	if !m.IsPopupActive() {
-		t.Error("IsPopupActive should be true after ActivateImagePopup")
-	}
-
-	view := m.View()
-	if !strings.Contains(view, testTitle) {
-		t.Errorf("View should contain popup title %q, got %q", testTitle, view)
-	}
-	// The popup should render the image content or at least the borders/title
-	// (we verify this more thoroughly in popup_test.go).
-	if !strings.Contains(view, "┌") && !strings.Contains(view, testTitle) {
-		t.Error("View should contain popup borders or title, not just the regular viewport")
-	}
-}
-
-// TestCloseImagePopup confirms that CloseImagePopup clears the popup state.
-func TestCloseImagePopup(t *testing.T) {
-	m := newTestModel()
-	m.LoadPosts("ch1", "general", makePostList([]api.Post{
-		{ID: "1", UserID: "u1", Message: "hello", CreateAt: 100},
-	}), nil)
-	m.SetSize(80, 20)
-
-	m.ActivateImagePopup("test image", "file.png")
-	if !m.IsPopupActive() {
-		t.Fatal("precondition: popup should be active")
-	}
-
-	m.CloseImagePopup()
-
-	if m.IsPopupActive() {
-		t.Error("IsPopupActive should be false after CloseImagePopup")
-	}
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Image popup routing tests (Task #17)
-// ────────────────────────────────────────────────────────────────────────────
-
-// TestOpenAttachment_ImageInCache_ShowsPopup verifies that when cursor is on
-// a post with a single file that has a cached image render, the popup is activated
-// and no Cmd is returned.
-func TestOpenAttachment_ImageInCache_ShowsPopup(t *testing.T) {
+// TestOpenAttachment_ImageInCache_OpensFile verifies that a cached image file
+// still returns an OpenFileMsg Cmd (opens in OS native viewer).
+func TestOpenAttachment_ImageInCache_OpensFile(t *testing.T) {
 	m := newTestModel()
 	m.SetSize(80, 20)
 
@@ -1457,7 +1395,6 @@ func TestOpenAttachment_ImageInCache_ShowsPopup(t *testing.T) {
 	}
 	m.LoadPosts("ch1", "general", makePostList([]api.Post{post}), nil)
 
-	// Set up file info and image cache.
 	m.fileInfoCache = map[string]api.FileInfo{
 		fileID: {ID: fileID, Name: "photo.png", Size: 1024, MimeType: "image/png"},
 	}
@@ -1467,49 +1404,13 @@ func TestOpenAttachment_ImageInCache_ShowsPopup(t *testing.T) {
 
 	cmd := m.OpenAttachmentForCursor()
 
-	if cmd != nil {
-		t.Error("expected nil Cmd when image is in cache (popup activated instead)")
-	}
-	if !m.IsPopupActive() {
-		t.Error("expected popup to be active when image is in cache")
-	}
-}
-
-// TestOpenAttachment_ImageNotInCache_OpensFile verifies that when cursor is on
-// a post with a single file whose metadata is cached but image is not,
-// an OpenFileMsg Cmd is returned.
-func TestOpenAttachment_ImageNotInCache_OpensFile(t *testing.T) {
-	m := newTestModel()
-	m.SetSize(80, 20)
-
-	fileID := "img456"
-	post := api.Post{
-		ID:       "p1",
-		UserID:   "u1",
-		Message:  "check this",
-		CreateAt: 100,
-		FileIds:  []string{fileID},
-	}
-	m.LoadPosts("ch1", "general", makePostList([]api.Post{post}), nil)
-
-	// Set up file info but NO image cache.
-	m.fileInfoCache = map[string]api.FileInfo{
-		fileID: {ID: fileID, Name: "photo.png", Size: 1024, MimeType: "image/png"},
-	}
-	m.imageCache = make(map[string]string) // empty
-
-	cmd := m.OpenAttachmentForCursor()
-
 	if cmd == nil {
-		t.Error("expected non-nil Cmd (OpenFileMsg) when image is not in cache")
-	}
-	if m.IsPopupActive() {
-		t.Error("expected popup to be inactive when image is not cached")
+		t.Error("expected non-nil Cmd (OpenFileMsg) for image file")
 	}
 }
 
 // TestOpenAttachment_NonImageFile_OpensFile verifies that a non-image file
-// (not in imageCache) returns an OpenFileMsg Cmd, regardless of image cache state.
+// returns an OpenFileMsg Cmd.
 func TestOpenAttachment_NonImageFile_OpensFile(t *testing.T) {
 	m := newTestModel()
 	m.SetSize(80, 20)
@@ -1524,18 +1425,14 @@ func TestOpenAttachment_NonImageFile_OpensFile(t *testing.T) {
 	}
 	m.LoadPosts("ch1", "general", makePostList([]api.Post{post}), nil)
 
-	// Set up file info (not in imageCache since it's not an image).
 	m.fileInfoCache = map[string]api.FileInfo{
 		fileID: {ID: fileID, Name: "document.pdf", Size: 2048, MimeType: "application/pdf"},
 	}
-	m.imageCache = make(map[string]string) // empty (or no entry for this file)
+	m.imageCache = make(map[string]string)
 
 	cmd := m.OpenAttachmentForCursor()
 
 	if cmd == nil {
 		t.Error("expected non-nil Cmd (OpenFileMsg) for non-image file")
-	}
-	if m.IsPopupActive() {
-		t.Error("expected popup to be inactive for non-image file")
 	}
 }

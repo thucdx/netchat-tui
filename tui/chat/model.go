@@ -32,9 +32,8 @@ type Model struct {
 	keys        keymap.KeyMap
 	width       int
 	height      int // chat area height (excludes input)
-	imageCache      map[string]string    // inline half-block renders keyed by file ID
-	imageBytesCache map[string][]byte   // raw thumbnail bytes keyed by file ID (for popup)
-	fileInfoCache   map[string]api.FileInfo // metadata for all file attachments
+	imageCache    map[string]string      // inline half-block renders keyed by file ID
+	fileInfoCache map[string]api.FileInfo // metadata for all file attachments
 	useContactName bool                 // true = show first+last name; false = show username
 
 	// Per-message cursor fields (Task #11).
@@ -43,11 +42,6 @@ type Model struct {
 	pickerActive bool           // true when multi-attachment picker is shown
 	pickerFiles  []api.FileInfo // files shown in picker
 	pickerCursor int            // highlighted row in picker
-
-	// Image popup fields
-	popupActive  bool
-	popupFileID  string // file ID whose bytes are rendered in the popup
-	popupTitle   string // filename shown in popup border
 
 	// Visual mode fields (Features 3 & 4)
 	visualMode   bool // true when V visual selection is active
@@ -286,9 +280,13 @@ func (m *Model) SetFileInfoCache(cache map[string]api.FileInfo) {
 		m.fileInfoCache[k] = v
 	}
 	if len(m.posts) > 0 {
+		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
 		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
 		m.viewport.SetContent(content)
+		if atBottom {
+			m.viewport.GotoBottom()
+		}
 	}
 }
 
@@ -303,9 +301,13 @@ func (m Model) SetImageCache(cache map[string]string) Model {
 		m.imageCache[k] = v
 	}
 	if len(m.posts) > 0 {
+		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
 		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
 		m.viewport.SetContent(content)
+		if atBottom {
+			m.viewport.GotoBottom()
+		}
 	}
 	return m
 }
@@ -333,12 +335,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		// Image popup: any key dismisses it.
-		if m.IsPopupActive() {
-			m.CloseImagePopup()
-			return m, nil
-		}
-
 		// Visual mode: Esc exits, y yanks.
 		// These must be checked before the error-banner guard.
 		if m.IsVisualMode() {
@@ -421,11 +417,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.IsPickerActive() {
 				if fi, ok := m.PickerSelected(); ok {
 					m.ClosePicker()
-					// If it's an image with a cached render, show popup.
-					if _, ok := m.imageBytesCache[fi.ID]; ok {
-						m.ActivateImagePopup(fi.ID, stripANSI(fi.Name))
-						return m, nil
-					}
 					return m, func() tea.Msg { return messages.OpenFileMsg{File: fi} }
 				}
 				return m, nil
@@ -479,14 +470,6 @@ func (m Model) View() string {
 	var body string
 	if m.loading {
 		body = m.spinner.View() + " Loading…"
-	} else if m.IsPopupActive() {
-		// Render the popup image at the actual popup dimensions (width-4 cols,
-		// viewport.Height-2 rows) so it fills the available space.
-		imgData := m.imageBytesCache[m.popupFileID]
-		popupCols := m.width - 4
-		popupRows := m.viewport.Height - 2
-		rendered := RenderImageHalfBlock(imgData, popupCols, popupRows)
-		body = RenderImagePopup(rendered, m.popupTitle, m.width, m.viewport.Height)
 	} else {
 		body = m.viewport.View()
 	}
@@ -662,39 +645,6 @@ func (m Model) PickerCursorIndex() int {
 	return m.pickerCursor
 }
 
-// --- Image popup API (Task #17) ---
-
-// ActivateImagePopup shows the image popup for the given file ID.
-// The popup renders from imageBytesCache at view time so it uses the actual
-// popup dimensions rather than a pre-baked size.
-func (m *Model) ActivateImagePopup(fileID, title string) {
-	m.popupActive = true
-	m.popupFileID = fileID
-	m.popupTitle = title
-}
-
-// CloseImagePopup dismisses the image popup.
-func (m *Model) CloseImagePopup() {
-	m.popupActive = false
-	m.popupFileID = ""
-	m.popupTitle = ""
-}
-
-// SetImageBytesCache stores raw thumbnail bytes for popup rendering.
-func (m *Model) SetImageBytesCache(cache map[string][]byte) {
-	if m.imageBytesCache == nil {
-		m.imageBytesCache = make(map[string][]byte)
-	}
-	for k, v := range cache {
-		m.imageBytesCache[k] = v
-	}
-}
-
-// IsPopupActive reports whether the image popup is currently shown.
-func (m Model) IsPopupActive() bool {
-	return m.popupActive
-}
-
 // --- Visual mode API (Features 3 & 4) ---
 
 // EnterVisualMode activates visual selection anchored at the current cursor.
@@ -810,11 +760,6 @@ func (m *Model) OpenAttachmentForCursor() tea.Cmd {
 	}
 	if len(infos) == 1 {
 		fi := infos[0]
-		// If it's an image with a cached render, show the popup instead of opening externally.
-		if rendered, ok := m.imageCache[fi.ID]; ok && rendered != "" {
-			m.ActivateImagePopup(rendered, stripANSI(fi.Name))
-			return nil
-		}
 		return func() tea.Msg { return messages.OpenFileMsg{File: fi} }
 	}
 	m.ActivatePicker(infos)

@@ -222,7 +222,7 @@ func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.exitSearch()
 			return m, func() tea.Msg {
-				return messages.ChannelSelectedMsg{ChannelID: r.item.Channel.ID}
+				return messages.ChannelSelectedMsg{ChannelID: r.item.Channel.ID, FocusOnOpen: true}
 			}
 		case searchKindNewDM:
 			m.exitSearch()

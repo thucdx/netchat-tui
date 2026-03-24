@@ -19,8 +19,10 @@ type KeyMap struct {
 	// Search opens the search bar in the sidebar.
 	Search key.Binding
 
-	// Select opens the highlighted channel. Only active when sidebar is focused.
+	// Select opens the highlighted channel and focuses the chat pane.
 	Select key.Binding
+	// PreviewChannel opens the highlighted channel without moving focus away from the sidebar.
+	PreviewChannel key.Binding // p
 
 	// Panel focus switching
 	FocusInput   key.Binding // i or a — focus message input
@@ -85,6 +87,10 @@ func DefaultKeyMap() KeyMap {
 		Select: key.NewBinding(
 			key.WithKeys("enter"),
 			key.WithHelp("enter", "open channel"),
+		),
+		PreviewChannel: key.NewBinding(
+			key.WithKeys("p"),
+			key.WithHelp("p", "preview channel"),
 		),
 		FocusInput: key.NewBinding(
 			key.WithKeys("i", "a"),
@@ -169,7 +175,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 // FullHelp returns all bindings for the full help page.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.Select, k.Search, k.ToggleName},
+		{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.Select, k.PreviewChannel, k.Search, k.ToggleName},
 		{k.FocusInput, k.FocusChat, k.FocusSidebar, k.NextPanel},
 		{k.ScrollUp, k.ScrollDown, k.PageUp, k.PageDown},
 		{k.Send, k.Newline, k.Quit, k.Help},

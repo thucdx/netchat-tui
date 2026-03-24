@@ -46,6 +46,7 @@ type Model struct {
 	height         int               // visible rows available (set by AppModel on resize)
 	width          int               // total sidebar width including border (set by AppModel)
 	pendingG       bool              // true after first 'g' press (for gg jump-to-top)
+	countBuf       int               // accumulated count prefix for motions (e.g. 5j)
 	keys           keymap.KeyMap
 	userID         string            // current user ID (to resolve DM names)
 	userCache      map[string]api.User
@@ -288,6 +289,14 @@ func (m Model) Init() tea.Cmd {
 	return nil
 }
 
+// countOrOne returns the accumulated count prefix, or 1 if no count was typed.
+func (m Model) countOrOne() int {
+	if m.countBuf < 1 {
+		return 1
+	}
+	return m.countBuf
+}
+
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -297,8 +306,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateSearch(msg)
 		}
 
+		// Accumulate count prefix digits (1-9 start a count; 0 extends it).
+		// Count digits must come before the motion key, so cancel any pending-g.
+		if s := msg.String(); len(s) == 1 {
+			ch := s[0]
+			if ch >= '1' && ch <= '9' {
+				m.pendingG = false
+				m.countBuf = m.countBuf*10 + int(ch-'0')
+				return m, nil
+			}
+			if ch == '0' && m.countBuf > 0 {
+				m.countBuf = m.countBuf * 10
+				return m, nil
+			}
+		}
+
 		// Enter search mode.
 		if key.Matches(msg, m.keys.Search) {
+			m.countBuf = 0
 			m.enterSearch()
 			return m, nil
 		}
@@ -306,20 +331,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, m.keys.JumpToTop):
 			if m.pendingG {
-				// Second g: jump to top
-				m.cursor = 0
-				m.viewOffset = 0
+				// Second g: jump to top, or to item N when count was given.
+				if m.countBuf > 0 {
+					target := m.countBuf - 1 // 1-based → 0-based
+					if target >= len(m.items) {
+						target = len(m.items) - 1
+					}
+					m.cursor = target
+					m.scrollViewTo(target)
+				} else {
+					m.cursor = 0
+					m.viewOffset = 0
+				}
 				m.pendingG = false
+				m.countBuf = 0
 			} else {
-				// First g: arm pending
+				// First g: arm pending (keep countBuf so second g can use it).
 				m.pendingG = true
 			}
 			return m, nil
 
 		case key.Matches(msg, m.keys.Down):
 			m.pendingG = false
+			n := m.countOrOne()
+			m.countBuf = 0
 			if len(m.items) > 0 {
-				m.cursor++
+				m.cursor += n
 				if m.cursor >= len(m.items) {
 					m.cursor = len(m.items) - 1
 				}
@@ -331,8 +368,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Up):
 			m.pendingG = false
+			n := m.countOrOne()
+			m.countBuf = 0
 			if len(m.items) > 0 {
-				m.cursor--
+				m.cursor -= n
 				if m.cursor < 0 {
 					m.cursor = 0
 				}
@@ -344,16 +383,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.JumpToBottom):
 			m.pendingG = false
 			if len(m.items) > 0 {
-				m.cursor = len(m.items) - 1
-				offset := len(m.items) - m.visibleHeight()
-				if offset < 0 {
-					offset = 0
+				if m.countBuf > 0 {
+					// 5G → jump to item 5 (1-based).
+					target := m.countBuf - 1
+					if target >= len(m.items) {
+						target = len(m.items) - 1
+					}
+					m.cursor = target
+					m.scrollViewTo(target)
+				} else {
+					m.cursor = len(m.items) - 1
+					offset := len(m.items) - m.visibleHeight()
+					if offset < 0 {
+						offset = 0
+					}
+					m.viewOffset = offset
 				}
-				m.viewOffset = offset
 			}
+			m.countBuf = 0
 
 		case key.Matches(msg, m.keys.ScrollUp):
 			m.pendingG = false
+			m.countBuf = 0
 			vh := m.visibleHeight()
 			m.viewOffset -= vh / 2
 			if m.viewOffset < 0 {
@@ -366,6 +417,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.ScrollDown):
 			m.pendingG = false
+			m.countBuf = 0
 			vh := m.visibleHeight()
 			maxOffset := len(m.items) - vh
 			if maxOffset < 0 {
@@ -382,15 +434,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Select):
 			m.pendingG = false
+			m.countBuf = 0
 			if len(m.items) > 0 && m.cursor >= 0 && m.cursor < len(m.items) {
 				m.selected = m.cursor
+				chID := m.items[m.cursor].Channel.ID
 				return m, func() tea.Msg {
-					return messages.ChannelSelectedMsg{ChannelID: m.items[m.cursor].Channel.ID}
+					return messages.ChannelSelectedMsg{ChannelID: chID, FocusOnOpen: true}
 				}
 			}
+		case key.Matches(msg, m.keys.PreviewChannel):
+			m.pendingG = false
+			m.countBuf = 0
+			if len(m.items) > 0 && m.cursor >= 0 && m.cursor < len(m.items) {
+				m.selected = m.cursor
+				chID := m.items[m.cursor].Channel.ID
+				return m, func() tea.Msg {
+					return messages.ChannelSelectedMsg{ChannelID: chID, FocusOnOpen: false}
+				}
+			}
+		default:
+			// Any unrecognised key cancels a pending-g and clears the count buffer.
+			m.pendingG = false
+			m.countBuf = 0
 		}
 	}
 	return m, nil
+}
+
+// scrollViewTo centres the view on item i, keeping it inside valid bounds.
+func (m *Model) scrollViewTo(i int) {
+	vh := m.visibleHeight()
+	offset := i - vh/2
+	maxOffset := len(m.items) - vh
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	m.viewOffset = offset
 }
 
 // View implements tea.Model.

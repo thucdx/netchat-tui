@@ -97,8 +97,7 @@ type AppModel struct {
 	wsCancel     context.CancelFunc // cancels WS reconnect loop
 	userID       string
 	userCache    map[string]api.User // all known users (DM partners + post authors)
-	imageCache      map[string]string // inline half-block renders keyed by file ID
-	imageBytesCache map[string][]byte // raw thumbnail bytes keyed by file ID (for popup)
+	imageCache map[string]string // inline half-block renders keyed by file ID
 	ready        bool
 	teams        []api.Team  // all teams the user belongs to (for channel search)
 	sidebarWidth int  // total sidebar width including border; resizable via drag
@@ -302,6 +301,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar.ExitSearch()
 		m.input.SetChannelID(msg.channel.ID)
 		m.chat.SetChannelInfo(msg.channel.ID, msg.username)
+		m.focus = FocusChat
 		if m.api != nil {
 			return m, m.cmdFetchPosts(msg.channel.ID, msg.username)
 		}
@@ -317,6 +317,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar.ExitSearch()
 		m.input.SetChannelID(msg.channel.ID)
 		m.chat.SetChannelInfo(msg.channel.ID, displayName)
+		m.focus = FocusChat
 		if m.api != nil {
 			return m, m.cmdFetchPosts(msg.channel.ID, displayName)
 		}
@@ -340,6 +341,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Clear sidebar unread badge.
 		m.sidebar.ClearUnread(msg.ChannelID)
+		// Shift focus to chat pane (Enter); p keeps focus in sidebar.
+		if msg.FocusOnOpen {
+			m.focus = FocusChat
+		}
 		if m.api != nil {
 			return m, tea.Batch(m.cmdFetchPosts(msg.ChannelID, channelName), m.titleCmd())
 		}
@@ -374,17 +379,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.imageCache == nil {
 			m.imageCache = make(map[string]string)
 		}
-		if m.imageBytesCache == nil {
-			m.imageBytesCache = make(map[string][]byte)
-		}
 		for k, v := range msg.Images {
 			m.imageCache[k] = v
 		}
-		for k, v := range msg.ImageBytes {
-			m.imageBytesCache[k] = v
-		}
 		m.chat = m.chat.SetImageCache(m.imageCache)
-		m.chat.SetImageBytesCache(m.imageBytesCache)
 		if len(msg.FileInfos) > 0 {
 			m.chat.SetFileInfoCache(msg.FileInfos)
 		}
@@ -846,8 +844,8 @@ func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
 	}
 }
 
-// cmdFetchImages downloads thumbnails for the given file IDs, renders small
-// inline half-block previews, and stores the raw bytes for popup re-rendering.
+// cmdFetchImages downloads thumbnails for the given file IDs and renders small
+// inline half-block previews.
 func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	if len(fileIDs) == 0 {
 		return nil
@@ -855,7 +853,6 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	apiClient := m.api
 	return func() tea.Msg {
 		rendered := make(map[string]string, len(fileIDs))
-		rawBytes := make(map[string][]byte, len(fileIDs))
 		fileInfos := make(map[string]api.FileInfo, len(fileIDs))
 		for _, fid := range fileIDs {
 			info, err := apiClient.GetFileInfo(fid)
@@ -875,10 +872,9 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 			r := chat.RenderImageHalfBlock(data, chat.InlineImageCols, chat.InlineImageRows)
 			if r != "" {
 				rendered[fid] = r
-				rawBytes[fid] = data // keep bytes for full-size popup render
 			}
 		}
-		return messages.ImagesReadyMsg{Images: rendered, ImageBytes: rawBytes, FileInfos: fileInfos}
+		return messages.ImagesReadyMsg{Images: rendered, FileInfos: fileInfos}
 	}
 }
 

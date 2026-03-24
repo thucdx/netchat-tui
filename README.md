@@ -22,20 +22,30 @@ A keyboard-driven terminal UI client for **netchat.viettel.vn** (Mattermost v4),
 ## Features
 
 - **Real-time messaging** via WebSocket — new messages appear instantly without polling; auto-reconnects if the connection drops
-- **Open attachments** — press `o` on any message with files to download and open them with your default app; inline picker for multi-file messages
-- **Unread marker** — `──── unread ────` divider marks your last read position; `r` jumps straight to it
 - **All channel types** in one unified sidebar: DMs, Group messages, Public, and Private channels
 - **Unread badges** per channel; automatically cleared when you open a channel
+- **Unread marker** — `──── unread ────` divider marks your last read position; `r` jumps straight to it
 - **Muted channel** indicators — distinct icon and dimmed style
 - **Markdown rendering** powered by [glamour](https://github.com/charmbracelet/glamour) — code blocks, bold, italics, lists, and more
-- **Image & file previews** — inline terminal art for images; press `o` on an image message to view it in a full-pane popup overlay
+- **Image & file attachments** — inline thumbnail art in the chat; press `o` to open any file or image in your OS default viewer at full resolution
 - **Message editing** — `(edited)` marker on server-edited posts
 - **Infinite scroll** — scroll to the top of any channel to page in older messages
-- **Sidebar search** — fuzzy-search joined channels/DMs and discover new ones via the API; open a new DM or join a public channel directly from the search results
-- **Display name toggle** — switch between contact name (first + last name) and account name (username) for all authors and channel labels at once
+- **Sidebar search** — fuzzy-search joined channels/DMs and discover new ones; open a new DM or join a public channel directly from results
+- **Display name toggle** — switch between contact name and username for all authors and channel labels at once
 - **Resizable sidebar** — drag the right border left/right with the mouse
-- **Vim-style navigation** — `j/k`, `gg`, `G`, `Ctrl+U/D`, `Ctrl+B/F` throughout
-- **Visual selection & copy** — `V` enters visual mode; `j`/`k` extends the selection; `y` copies selected messages to the clipboard
+- **Vim-style navigation** — `j/k`, `gg`, `G`, `Ctrl+U/D`, `Ctrl+B/F`, count prefixes (`5j`, `5gg`) throughout
+- **Visual selection & copy** — `V` enters visual mode; `j`/`k` extends the selection; `y` copies to the clipboard
+- **Preview channel** — `p` loads a channel in the chat pane without leaving the sidebar
+
+---
+
+## Requirements
+
+- A valid account on **netchat.viettel.vn**
+- A terminal with **true-color support**: [Ghostty](https://ghostty.org), iTerm2, Alacritty, kitty, WezTerm, Windows Terminal, etc.
+- Go 1.22+ (only for build-from-source installs)
+
+> **Recommended: Ghostty** — best rendering fidelity, true 24-bit color, and fast redraws.
 
 ---
 
@@ -82,48 +92,28 @@ go build -o netchat-tui .
 
 ---
 
-## Requirements
+## Authentication — getting your MMAUTHTOKEN
 
-- A valid account on **netchat.viettel.vn**
-- A terminal with true-color support (iTerm2, Alacritty, kitty, Windows Terminal, etc.)
-- Go 1.22+ (only for Options 2 and 3 above)
+netchat-tui authenticates with your **MMAUTHTOKEN** browser session cookie. No personal access token setup is required.
 
----
-
-## First run
-
-On first launch you will be taken to the **authentication screen** (see below). Subsequent launches go straight to the chat UI using the saved token.
-
----
-
-## Authentication — getting your token
-
-netchat-tui authenticates with a **Personal Access Token** (a long-lived bearer token). There are two ways to obtain one:
-
-### Option A — Personal Access Tokens page (recommended)
+### How to copy your MMAUTHTOKEN
 
 1. Log in to [netchat.viettel.vn](https://netchat.viettel.vn) in your browser.
-2. Click your avatar → **Profile** → **Security** → **Personal Access Tokens**.
-3. Click **Create Token**, give it any name (e.g. `netchat-tui`), and copy the token value.
+2. Open DevTools (`F12`) → **Application** tab (Chrome/Edge) or **Storage** tab (Firefox).
+3. Navigate to **Cookies** → `https://netchat.viettel.vn`.
+4. Find the cookie named **`MMAUTHTOKEN`** and copy its **Value**.
 
-> **Note:** If the Personal Access Tokens page is missing, the feature may be disabled on your server — use Option B instead.
+> **Tip (Chrome/Edge shortcut):** Open the **Network** tab, reload the page, click any API request, go to **Request Headers**, and copy the value after `Authorization: Bearer `.
 
-### Option B — Copy from browser DevTools
+### First launch
 
-1. Log in to [netchat.viettel.vn](https://netchat.viettel.vn) in your browser.
-2. Open DevTools (`F12`) → **Network** tab.
-3. Reload the page or send any message.
-4. Click any API request, look at its **Request Headers**, and copy the value after `Authorization: Bearer `.
-
-### Pasting the token
-
-When netchat-tui starts without a saved token it shows a prompt:
+When netchat-tui starts without a saved token it shows:
 
 ```
 Paste MMAUTHTOKEN here…
 ```
 
-Paste your token (it is hidden as `•••`) and press **Enter**. The app validates it against the server; on success the token is saved to `~/.config/netchat-tui/config.json` (mode `0600`) and you will not be asked again.
+Paste your token (input is hidden as `•••`) and press **Enter**. The app validates it against the server; on success it is saved to `~/.config/netchat-tui/config.json` (mode `0600`) and you will not be asked again.
 
 To **switch accounts**, delete the config file and restart:
 
@@ -143,7 +133,7 @@ The UI is three panels:
 | **Chat pane** (top-right) | Message history with author headers, timestamps, and markdown rendering. |
 | **Input** (bottom-right) | Multi-line message composer. |
 
-Focus cycles with `Tab` or jump directly with `i`/`a` (input) and `Esc` (sidebar).
+Jump between panels with `[` (sidebar), `]` (chat), `i`/`a` (input), or cycle with `Tab`.
 
 ### Sidebar channel icons
 
@@ -162,91 +152,123 @@ Focus cycles with `Tab` or jump directly with `i`/`a` (input) and `Esc` (sidebar
 
 ## Keybindings
 
-### Focus
+Keys are ordered from most-used to least-used within each section.
+
+### 1. Navigate between panels
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Cycle focus: Sidebar → Chat → Input |
+| `]` | Jump to chat pane |
+| `[` | Jump to sidebar |
 | `i` or `a` | Jump to message input |
-| `Esc` | Return focus to sidebar (also dismisses error banner) |
+| `Esc` | Return to chat pane from input |
+| `Tab` | Cycle focus: Sidebar → Chat → Input |
 
-### Sidebar — channel list
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move cursor down |
-| `k` / `↑` | Move cursor up |
-| `gg` | Jump to top of list |
-| `G` | Jump to bottom of list |
-| `Ctrl+U` | Scroll up half page |
-| `Ctrl+D` | Scroll down half page |
-| `Enter` | Open highlighted channel |
-| `/` or `Ctrl+F` | Open search bar |
-| `n` | Toggle display name (contact name ↔ username) |
-| `q` | Quit |
-
-### Sidebar — search mode
-
-Triggered by `/` or `Ctrl+F`. The sidebar is replaced by a live results list.
+### 2. Open / preview a channel
 
 | Key | Action |
 |-----|--------|
+| `Enter` | Open channel and move focus to chat pane |
+| `p` | Preview channel (load chat without leaving sidebar) |
+
+### 3. Search channels and DMs
+
+Press `/` to open the search bar. The sidebar is replaced by a live results list.
+
+| Key | Action |
+|-----|--------|
+| `/` | Open search bar |
 | _(type)_ | Build query (results appear after 3 characters) |
 | `↑` / `↓` | Move result cursor |
 | `Enter` | Open existing channel / start new DM / join channel |
 | `Backspace` | Delete last character |
 | `Esc` | Exit search, return to channel list |
 
-When selecting a **new public channel**, a confirmation line appears:
+When selecting a **new public channel**, a confirmation prompt appears:
 ```
 Join #channel-name? [y/N]
 ```
 Press `y` or `Enter` to confirm, any other key to cancel.
 
-### Chat pane
+### 4. Navigate the chat pane
 
 | Key | Action |
 |-----|--------|
 | `j` / `↓` | Move cursor to next (newer) message |
 | `k` / `↑` | Move cursor to previous (older) message |
-| `Ctrl+U` | Scroll viewport up half page |
-| `Ctrl+D` | Scroll viewport down half page |
-| `Ctrl+B` | Page up |
-| `Ctrl+F` | Page down |
-| `gg` | Cursor to oldest loaded message |
-| `G` | Cursor to newest message |
+| `G` | Jump to newest message |
 | `r` | Jump to first unread message |
-| `o` or `l` | Open attachment(s) of cursor message; images open in popup overlay |
-| `h` | Close attachment picker / image popup |
-| `V` | Enter visual selection mode (anchored at cursor) |
-| `y` | Yank (copy) selected messages to clipboard; exit visual mode |
-| `Esc` | Exit visual mode |
+| `gg` | Jump to oldest loaded message |
+| `Ctrl+D` | Scroll viewport down half page |
+| `Ctrl+U` | Scroll viewport up half page |
+| `Ctrl+F` | Page down |
+| `Ctrl+B` | Page up |
 
-> Moving the cursor to the **top of the loaded buffer** automatically loads the previous page of messages.
+> Scrolling or moving the cursor to the **top of the loaded buffer** automatically pages in older messages.
 
-### Message input
+### 5. Copy messages
 
 | Key | Action |
 |-----|--------|
+| `V` | Enter visual selection mode (anchored at cursor) |
+| `j` / `k` | Extend selection down / up |
+| `y` | Copy selected messages to clipboard; exit visual mode |
+| `Esc` | Cancel visual mode without copying |
+
+**Quick copy a single message:** navigate to it with `j`/`k`, press `V`, then `y`.
+
+### 6. Send a message
+
+| Key | Action |
+|-----|--------|
+| `i` or `a` | Focus the input bar |
+| _(type)_ | Compose your message |
 | `Enter` | Send message |
 | `Shift+Enter` | Insert newline |
+| `Esc` | Discard focus, return to chat pane |
 
-### Global
+### 7. Open files and images
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+C` | Quit from anywhere |
+| `o` or `l` | Open attachment(s) of the cursor message in the OS default viewer |
+| `h` | Close attachment picker (when multiple files) |
+
+For messages with **multiple files**, pressing `o` opens an inline picker — navigate with `j`/`k`, press `Enter` to open, `h` to dismiss.
+
+Images are displayed as **inline thumbnail art** in the chat. Press `o` to open the full-resolution image in your OS viewer (Preview on macOS, default image app on Linux/Windows).
+
+### 8. Navigate the sidebar list
+
+| Key | Action |
+|-----|--------|
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `{N}j` / `{N}k` | Move down/up N items (e.g. `5j`) |
+| `{N}gg` / `{N}G` | Jump to item N, 1-based (e.g. `5gg` or `5G`) |
+| `gg` | Jump to top of list |
+| `G` | Jump to bottom of list |
+| `Ctrl+U` | Scroll up half page |
+| `Ctrl+D` | Scroll down half page |
+
+### 9. Global
+
+| Key | Action |
+|-----|--------|
 | `?` | Show keybinding help overlay |
+| `n` | Toggle display name (contact name ↔ username) |
+| `q` | Quit (sidebar focused) |
+| `Ctrl+C` | Quit from anywhere |
 
 ---
 
 ## Display name toggle
 
-Press `n` while the sidebar has focus to switch how user names are shown **everywhere** (sidebar labels, chat message headers):
+Press `n` while the sidebar has focus to switch how names are shown **everywhere** (sidebar labels, chat message headers):
 
 | Mode | Display |
 |------|---------|
-| **Contact name** (default) | First + Last name from the user's profile. Falls back to username if no name is set. |
+| **Contact name** (default) | First + Last name from the user's profile. Falls back to username if empty. |
 | **Account name** | Raw username (e.g. `nguyenvan.a`) |
 
 The toggle applies to DMs and Group channels only; public/private channel names are unaffected.
@@ -264,15 +286,7 @@ netchat-tui          ← everything read
 
 Only **unmuted** channels are counted.
 
-### How it works
-
-At startup (when `$TMUX` is set) the app:
-1. Disables `automatic-rename` for the current window (prevents tmux from fighting our custom title)
-2. Calls `tmux rename-window` directly on every unread change
-
-On exit it resets the window name to `netchat-tui` and restores `automatic-rename`.
-
-No tmux configuration required — everything is set automatically per-window.
+At startup (when `$TMUX` is set) the app disables `automatic-rename` for the current window and calls `tmux rename-window` on every unread change. On exit it resets the window name and restores `automatic-rename`. No tmux configuration required.
 
 ---
 
@@ -291,7 +305,7 @@ _(on macOS: `~/Library/Application Support/netchat-tui/config.json`)_
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `token` | — | Bearer token (written by the auth prompt) |
+| `token` | — | MMAUTHTOKEN value (written by the auth prompt) |
 | `user_id` | — | Your Mattermost user ID (written automatically) |
 | `sidebar_limit` | `200` | Maximum channels shown in the sidebar |
 
