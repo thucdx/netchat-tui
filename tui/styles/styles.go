@@ -6,22 +6,24 @@ import "github.com/charmbracelet/lipgloss"
 const (
 	SidebarWidth       = 28 // default sidebar width (includes border)
 	SidebarBorderWidth = 1  // right-border added by BorderRight(true)
-	InputHeight        = 3
+	InputHeight        = 5
 )
 
-// Colors
+// GitHub Dark palette
 var (
-	colorPrimary    = lipgloss.Color("#7C3AED") // purple accent
-	colorMuted      = lipgloss.Color("#6B7280") // gray
-	colorUnread     = lipgloss.Color("#F59E0B") // amber — unread badge
-	colorError      = lipgloss.Color("#EF4444") // red
-	colorSuccess    = lipgloss.Color("#10B981") // green
-	colorFg         = lipgloss.Color("#E5E7EB") // near-white text
-	colorFgDim      = lipgloss.Color("#9CA3AF") // dimmed text
-	colorBg         = lipgloss.Color("#111827") // dark bg
-	colorBgSelected = lipgloss.Color("#2D3748") // selected row (bumped for tmux 256-color visibility)
-	colorBorder      = lipgloss.Color("#374151") // subtle border
-	colorBorderFocus = lipgloss.Color("#7C3AED") // purple — focused panel border
+	ColorBg          = lipgloss.Color("#0d1117") // base background
+	colorSurface     = lipgloss.Color("#161b22") // sidebar / panel surface
+	colorSelected    = lipgloss.Color("#1c2128") // selected row highlight
+	colorBorder      = lipgloss.Color("#21262d") // subtle border
+	ColorBorderHi    = lipgloss.Color("#30363d") // slightly more visible border (system msg borders)
+	colorBorderFocus = lipgloss.Color("#58a6ff") // focused panel border (blue)
+	colorFg          = lipgloss.Color("#e6edf3") // primary text
+	colorFgMuted     = lipgloss.Color("#7d8590") // secondary / muted text
+	colorFgDimmer    = lipgloss.Color("#484f58") // very dimmed (muted channels, etc.)
+	colorPrimary     = lipgloss.Color("#58a6ff") // blue accent
+	colorSuccess     = lipgloss.Color("#3fb950") // green (own messages, success)
+	colorUnread      = lipgloss.Color("#e3b341") // yellow (unread badge)
+	colorError       = lipgloss.Color("#f85149") // red
 )
 
 // Sidebar styles
@@ -31,63 +33,68 @@ var (
 	// SidebarStyle renders the sidebar panel. Width is applied by the caller
 	// at render time: SidebarStyle.Width(w).Height(h).Render(...).
 	SidebarStyle = lipgloss.NewStyle().
-			Background(colorBg).
+			Background(colorSurface).
 			BorderRight(true).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(colorBorder)
 
-	// SidebarFocusedStyle is the sidebar style when the panel has focus (purple border).
+	// SidebarFocusedStyle is the sidebar style when the panel has focus (blue border).
 	SidebarFocusedStyle = lipgloss.NewStyle().
-				Background(colorBg).
+				Background(colorSurface).
 				BorderRight(true).
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(colorBorderFocus)
 
 	SidebarHeader = lipgloss.NewStyle().
-			Foreground(colorFgDim).
+			Foreground(colorFgMuted).
 			Bold(true).
 			PaddingLeft(1)
 
 	// Channel row styles — Width is NOT set here; view.go applies it dynamically.
 	ChannelNormal = lipgloss.NewStyle().
-			Foreground(colorFg).
+			Foreground(colorFgMuted).
+			Background(colorSurface).
 			PaddingLeft(1)
 
 	ChannelSelected = lipgloss.NewStyle().
-			Foreground(colorFg).
-			Background(colorBgSelected).
+			Foreground(colorPrimary).
+			Background(colorSelected).
 			Bold(true).
 			PaddingLeft(1)
 
 	ChannelMuted = lipgloss.NewStyle().
-			Foreground(colorFgDim).
+			Foreground(colorFgDimmer).
+			Background(colorSurface).
 			PaddingLeft(1)
 
 	ChannelMutedUnread = lipgloss.NewStyle().
-			Foreground(colorFgDim).
-			Bold(true).
-			PaddingLeft(1)
+				Foreground(colorFgDimmer).
+				Background(colorSurface).
+				Bold(true).
+				PaddingLeft(1)
 
 	ChannelActive = lipgloss.NewStyle().
 			Foreground(colorPrimary).
+			Background(colorSurface).
 			Bold(true).
 			PaddingLeft(1)
 
 	ChannelUnread = lipgloss.NewStyle().
 			Foreground(colorFg).
+			Background(colorSurface).
 			Bold(true).
 			PaddingLeft(1)
 
 	UnreadBadge = lipgloss.NewStyle().
-			Foreground(colorBg).
+			Foreground(ColorBg).
 			Background(colorUnread).
 			Bold(true).
 			PaddingLeft(1).
 			PaddingRight(1)
 
 	MutedBadge = lipgloss.NewStyle().
-			Foreground(colorBg).
-			Background(colorFgDim).
+			Foreground(ColorBg).
+			Background(colorFgMuted).
 			PaddingLeft(1).
 			PaddingRight(1)
 )
@@ -95,7 +102,7 @@ var (
 // Chat styles
 var (
 	ChatStyle = lipgloss.NewStyle().
-			Background(colorBg)
+			Background(ColorBg)
 
 	MessageUsername = lipgloss.NewStyle().
 			Foreground(colorPrimary).
@@ -103,21 +110,21 @@ var (
 
 	// MessageMyUsername styles the "You" header for messages sent by the current user.
 	MessageMyUsername = lipgloss.NewStyle().
-			Foreground(colorSuccess).
-			Bold(true)
+				Foreground(colorSuccess).
+				Bold(true)
 
 	MessageTimestamp = lipgloss.NewStyle().
-			Foreground(colorFgDim)
+				Foreground(colorFgMuted)
 
 	MessageText = lipgloss.NewStyle().
 			Foreground(colorFg)
 
 	MessageSystem = lipgloss.NewStyle().
-			Foreground(colorFgDim).
+			Foreground(colorFgMuted).
 			Italic(true)
 
 	MessageEdited = lipgloss.NewStyle().
-			Foreground(colorFgDim)
+			Foreground(colorFgMuted)
 
 	// ChannelHeader is the base style for the channel name header bar.
 	// Callers must set the width at render time: ChannelHeader.Width(chatWidth).Render(text)
@@ -135,25 +142,18 @@ func ChannelHeaderWithWidth(w int) lipgloss.Style {
 	return ChannelHeader.Width(w)
 }
 
-// MessageUserPalette provides 8 rotating fg/bg pairs for chat participants.
-// Backgrounds are very dark tints so they remain easy on the eye; foregrounds
-// are vibrant enough to be clearly distinct at a glance.
-var MessageUserPalette = []struct {
-	Fg lipgloss.Color
-	Bg lipgloss.Color
-}{
-	{Fg: lipgloss.Color("#60A5FA"), Bg: lipgloss.Color("#141c28")}, // blue
-	{Fg: lipgloss.Color("#F472B6"), Bg: lipgloss.Color("#221420")}, // pink
-	{Fg: lipgloss.Color("#FBBF24"), Bg: lipgloss.Color("#241e10")}, // amber
-	{Fg: lipgloss.Color("#38BDF8"), Bg: lipgloss.Color("#121e24")}, // sky
-	{Fg: lipgloss.Color("#C084FC"), Bg: lipgloss.Color("#1c1428")}, // violet
-	{Fg: lipgloss.Color("#FB923C"), Bg: lipgloss.Color("#241a12")}, // orange
-	{Fg: lipgloss.Color("#4ADE80"), Bg: lipgloss.Color("#101f14")}, // green
-	{Fg: lipgloss.Color("#34D399"), Bg: lipgloss.Color("#141f1a")}, // emerald
+// MessageUserPalette provides 8 rotating accent colors for chat participants.
+// Each color is used for the user's name text and their message left-border.
+var MessageUserPalette = []lipgloss.Color{
+	lipgloss.Color("#58a6ff"), // blue
+	lipgloss.Color("#f78166"), // coral
+	lipgloss.Color("#7ee787"), // green
+	lipgloss.Color("#ffa657"), // orange
+	lipgloss.Color("#d2a8ff"), // purple
+	lipgloss.Color("#79c0ff"), // sky
+	lipgloss.Color("#ff7b72"), // red
+	lipgloss.Color("#56d364"), // mint
 }
-
-// MessageSelfBg is the subtle background tint for the current user's messages.
-var MessageSelfBg = lipgloss.Color("#131f16")
 
 // UserColorIndex maps a userID to a deterministic index into MessageUserPalette.
 func UserColorIndex(userID string) int {
@@ -177,7 +177,7 @@ var (
 
 	// SearchHintStyle renders the "type ≥3 chars" hint line.
 	SearchHintStyle = lipgloss.NewStyle().
-				Foreground(colorFgDim).
+				Foreground(colorFgMuted).
 				Italic(true).
 				PaddingLeft(1)
 
@@ -189,7 +189,7 @@ var (
 	// SearchNewItemCursorStyle is SearchNewItemStyle with cursor highlight.
 	SearchNewItemCursorStyle = lipgloss.NewStyle().
 					Foreground(colorSuccess).
-					Background(colorBgSelected).
+					Background(colorSelected).
 					Bold(true).
 					PaddingLeft(1)
 
@@ -217,7 +217,8 @@ var (
 var CursorBorder = lipgloss.NewStyle().
 	BorderLeft(true).
 	BorderStyle(lipgloss.ThickBorder()).
-	BorderForeground(lipgloss.Color("33")). // bright blue
+	BorderForeground(colorBorderFocus).
+	BorderBackground(ColorBg).
 	PaddingLeft(1)
 
 // VisualSelectionBorder highlights posts inside the visual selection range.
@@ -225,11 +226,12 @@ var CursorBorder = lipgloss.NewStyle().
 var VisualSelectionBorder = lipgloss.NewStyle().
 	BorderStyle(lipgloss.ThickBorder()).
 	BorderLeft(true).
-	BorderForeground(lipgloss.Color("3")). // yellow
+	BorderForeground(colorUnread).
+	BorderBackground(ColorBg).
 	PaddingLeft(1)
 
 // UnreadDivider is the style for the "──── unread ────" line shown between read and unread messages.
-var UnreadDivider = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+var UnreadDivider = lipgloss.NewStyle().Foreground(lipgloss.Color("#484f58"))
 
 // Utility styles
 var (
@@ -241,7 +243,7 @@ var (
 			Foreground(colorSuccess)
 
 	SubtleStyle = lipgloss.NewStyle().
-			Foreground(colorFgDim)
+			Foreground(colorFgMuted)
 
 	TitleStyle = lipgloss.NewStyle().
 			Foreground(colorPrimary).

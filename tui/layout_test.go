@@ -15,11 +15,11 @@ func TestNewLayout_Normal(t *testing.T) {
 	if l.ChatWidth != 92 {
 		t.Errorf("ChatWidth: got %d, want 92", l.ChatWidth)
 	}
-	if l.ChatHeight != 37 {
-		t.Errorf("ChatHeight: got %d, want 37", l.ChatHeight)
+	if l.ChatHeight != 35 {
+		t.Errorf("ChatHeight: got %d, want 35", l.ChatHeight)
 	}
-	if l.InputHeight != 3 {
-		t.Errorf("InputHeight: got %d, want 3", l.InputHeight)
+	if l.InputHeight != 5 {
+		t.Errorf("InputHeight: got %d, want 5", l.InputHeight)
 	}
 	if l.TotalWidth != 120 {
 		t.Errorf("TotalWidth: got %d, want 120", l.TotalWidth)

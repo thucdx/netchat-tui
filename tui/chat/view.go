@@ -48,7 +48,7 @@ func newMarkdownRenderer(width int) func(string) string {
 // RenderPosts converts a sorted []api.Post into a single string for the viewport.
 // Groups consecutive posts from the same user (only first shows username+timestamp).
 // myUserID is the logged-in user's ID; their messages show "You" in a distinct colour.
-// Each unique user gets a rotating colour on the header bar for easy scanning.
+// Each unique user gets a rotating colour on the left border for easy scanning.
 // Message content is rendered with glamour (markdown + syntax highlighting).
 // Shows "(edited)" for posts with EditAt > 0.
 // cursor is the index of the highlighted post (-1 = none).
@@ -63,7 +63,7 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 	renderMD := newMarkdownRenderer(width)
 	var sb strings.Builder
 	lastUserID := ""
-	var currentBg lipgloss.Color
+	var currentAccent lipgloss.Color
 	dividerInserted := false
 	needLeadingNewline := false // tracks whether to emit a "\n" separator before the next block
 
@@ -95,11 +95,19 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 				block = styles.CursorBorder.Render(block)
 			} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
 				block = styles.VisualSelectionBorder.Render(block)
+			} else {
+				sysBorder := lipgloss.NewStyle().
+					BorderLeft(true).
+					BorderStyle(lipgloss.NormalBorder()).
+					BorderForeground(styles.ColorBorderHi).
+					BorderBackground(styles.ColorBg).
+					PaddingLeft(1)
+				block = sysBorder.Render(block)
 			}
 			sb.WriteString(block)
 			needLeadingNewline = true
 			lastUserID = ""
-			currentBg = lipgloss.Color("")
+			currentAccent = lipgloss.Color("")
 			continue
 		}
 
@@ -115,31 +123,24 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		var block strings.Builder
 
 		if !isGrouped {
-			// Determine per-user palette entry.
+			// Determine per-user accent color.
 			var usernameFg lipgloss.Color
 			var usernameLabel string
 			if myUserID != "" && post.UserID == myUserID {
-				currentBg = styles.MessageSelfBg
-				usernameFg = lipgloss.Color("#10B981")
+				currentAccent = lipgloss.Color("#3fb950")
+				usernameFg = currentAccent
 				usernameLabel = "You ▶"
 			} else {
-				entry := styles.MessageUserPalette[styles.UserColorIndex(post.UserID)]
-				currentBg = entry.Bg
-				usernameFg = entry.Fg
+				currentAccent = styles.MessageUserPalette[styles.UserColorIndex(post.UserID)]
+				usernameFg = currentAccent
 				usernameLabel = resolveUsername(post.UserID, userCache, useContactName)
 			}
 
-			// Header: username + timestamp with user-colour background spanning full width.
+			// Header: username + timestamp (plain text, no background).
 			timestamp := FormatTimestamp(post.CreateAt)
-			usernameStr := lipgloss.NewStyle().Foreground(usernameFg).Bold(true).Background(currentBg).Render(usernameLabel)
-			timestampStr := styles.MessageTimestamp.Background(currentBg).Render(" " + timestamp)
-			used := lipgloss.Width(usernameStr) + lipgloss.Width(timestampStr)
-			if width > used {
-				pad := lipgloss.NewStyle().Background(currentBg).Render(strings.Repeat(" ", width-used))
-				block.WriteString(usernameStr + timestampStr + pad + "\n")
-			} else {
-				block.WriteString(usernameStr + timestampStr + "\n")
-			}
+			usernameStr := lipgloss.NewStyle().Foreground(usernameFg).Bold(true).Render(usernameLabel)
+			timestampStr := styles.MessageTimestamp.Render("  " + timestamp)
+			block.WriteString(usernameStr + timestampStr + "\n")
 		}
 
 		// Render content with glamour (handles markdown, code blocks, images, etc.).
@@ -169,11 +170,20 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Apply cursor border to the whole block when this post is selected.
 		// Visual selection border is applied for posts in [visualStart, visualEnd],
 		// but cursor border takes priority when i == cursor.
+		// Default: per-user accent left border.
 		blockStr := block.String()
 		if i == cursor {
 			blockStr = styles.CursorBorder.Render(blockStr)
 		} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
 			blockStr = styles.VisualSelectionBorder.Render(blockStr)
+		} else {
+			userBorder := lipgloss.NewStyle().
+				BorderLeft(true).
+				BorderStyle(lipgloss.ThickBorder()).
+				BorderForeground(currentAccent).
+				BorderBackground(styles.ColorBg).
+				PaddingLeft(1)
+			blockStr = userBorder.Render(blockStr)
 		}
 		sb.WriteString(blockStr)
 
