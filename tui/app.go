@@ -195,16 +195,18 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Focus cycling.
 			switch {
 			case key.Matches(msg, m.keys.NextPanel):
-				switch m.focus {
-				case FocusSidebar:
-					m.focus = FocusChat
-				case FocusChat:
-					m.focus = FocusInput
-				case FocusInput:
-					m.focus = FocusSidebar
+				// Tab only cycles between sidebar and chat; when in input the
+				// key is passed through so the textarea can use it for indentation.
+				if m.focus != FocusInput {
+					switch m.focus {
+					case FocusSidebar:
+						m.focus = FocusChat
+					case FocusChat:
+						m.focus = FocusSidebar
+					}
+					m.syncFocus()
+					return m, nil
 				}
-				m.syncFocus()
-				return m, nil
 
 			case key.Matches(msg, m.keys.FocusInput):
 				if m.focus == FocusSidebar || m.focus == FocusChat {
@@ -213,17 +215,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
-			// ] → chat from sidebar or input.
+			// ] → chat; only active outside input so ] can be typed in messages.
 			case key.Matches(msg, m.keys.FocusChat):
-				if m.focus == FocusSidebar || m.focus == FocusInput {
+				if m.focus == FocusSidebar {
 					m.focus = FocusChat
 					m.syncFocus()
 					return m, nil
 				}
 
-			// [ → sidebar from chat or input.
+			// [ → sidebar; only active outside input so [ can be typed in messages.
 			case key.Matches(msg, m.keys.FocusSidebar):
-				if m.focus == FocusInput || m.focus == FocusChat {
+				if m.focus == FocusChat {
 					m.focus = FocusSidebar
 					m.syncFocus()
 					return m, nil
