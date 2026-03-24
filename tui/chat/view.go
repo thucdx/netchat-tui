@@ -20,6 +20,34 @@ func stripANSI(s string) string {
 	return ansiEscape.ReplaceAllString(s, "")
 }
 
+// cursorBgSeq is the ANSI true-color background escape sequence for
+// styles.ColorSelected.  It is computed once at package init so it can be
+// injected into glamour-rendered content to keep the selected-message
+// background visible across the ANSI reset codes that glamour emits.
+var cursorBgSeq = func() string {
+	hex := strings.TrimPrefix(string(styles.ColorSelected), "#")
+	if len(hex) != 6 {
+		return ""
+	}
+	var r, g, b int
+	fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, b)
+}()
+
+// injectBgAfterResets prepends bg and re-applies it after every ANSI
+// full-reset sequence (\x1b[0m / \x1b[m) in s.  Glamour emits these resets
+// aggressively, which clears any outer background we set; this function
+// ensures the background colour is reinstated after each reset so that it
+// fills the entire rendered block uniformly.
+func injectBgAfterResets(s, bg string) string {
+	if bg == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, "\x1b[0m", "\x1b[0m"+bg)
+	s = strings.ReplaceAll(s, "\x1b[m", "\x1b[m"+bg)
+	return bg + s
+}
+
 // newMarkdownRenderer returns a function that renders a markdown string to ANSI
 // using glamour's dark theme, word-wrapped to the given width.
 // Falls back to plain text on error.
@@ -92,7 +120,8 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			}
 			block := styles.MessageSystem.Render(content)
 			if i == cursor {
-				block = styles.CursorBorder.Background(styles.ColorSelected).Width(width - 2).Render(block)
+				block = styles.CursorBorder.Background(styles.ColorSelected).Width(width - 2).Render(
+					injectBgAfterResets(block, cursorBgSeq))
 			} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
 				block = styles.VisualSelectionBorder.Render(block)
 			} else {
@@ -173,7 +202,8 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Default: per-user accent left border.
 		blockStr := block.String()
 		if i == cursor {
-			blockStr = styles.CursorBorder.Background(styles.ColorSelected).Width(width - 2).Render(blockStr)
+			blockStr = styles.CursorBorder.Background(styles.ColorSelected).Width(width - 2).Render(
+				injectBgAfterResets(blockStr, cursorBgSeq))
 		} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
 			blockStr = styles.VisualSelectionBorder.Render(blockStr)
 		} else {
