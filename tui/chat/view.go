@@ -92,7 +92,7 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			}
 			block := styles.MessageSystem.Render(content)
 			if i == cursor {
-				block = styles.CursorBorder.Render(block)
+				block = styles.CursorBorder.Background(styles.ColorSelected).Width(width - 2).Render(block)
 			} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
 				block = styles.VisualSelectionBorder.Render(block)
 			} else {
@@ -173,7 +173,7 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Default: per-user accent left border.
 		blockStr := block.String()
 		if i == cursor {
-			blockStr = styles.CursorBorder.Render(blockStr)
+			blockStr = styles.CursorBorder.Background(styles.ColorSelected).Width(width - 2).Render(blockStr)
 		} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
 			blockStr = styles.VisualSelectionBorder.Render(blockStr)
 		} else {

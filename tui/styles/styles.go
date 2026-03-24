@@ -13,7 +13,7 @@ const (
 var (
 	ColorBg          = lipgloss.Color("#0d1117") // base background
 	colorSurface     = lipgloss.Color("#161b22") // sidebar / panel surface
-	colorSelected    = lipgloss.Color("#1c2128") // selected row highlight
+	ColorSelected    = lipgloss.Color("#1c2128") // selected row highlight (exported for cursor bg)
 	colorBorder      = lipgloss.Color("#21262d") // subtle border
 	ColorBorderHi    = lipgloss.Color("#30363d") // slightly more visible border (system msg borders)
 	colorBorderFocus = lipgloss.Color("#58a6ff") // focused panel border (blue)
@@ -58,7 +58,7 @@ var (
 
 	ChannelSelected = lipgloss.NewStyle().
 			Foreground(colorPrimary).
-			Background(colorSelected).
+			Background(ColorSelected).
 			Bold(true).
 			PaddingLeft(1)
 
@@ -189,7 +189,7 @@ var (
 	// SearchNewItemCursorStyle is SearchNewItemStyle with cursor highlight.
 	SearchNewItemCursorStyle = lipgloss.NewStyle().
 					Foreground(colorSuccess).
-					Background(colorSelected).
+					Background(ColorSelected).
 					Bold(true).
 					PaddingLeft(1)
 
