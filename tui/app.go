@@ -104,6 +104,8 @@ type AppModel struct {
 	dragging     bool // true while the user is dragging the sidebar border
 	titleUpdater func(string) // if non-nil, called instead of tea.SetWindowTitle
 
+	helpVisible bool // true while the ? keybinding overlay is shown
+
 	sidebar sidebar.Model
 	chat    chat.Model
 	input   input.Model
@@ -180,6 +182,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Ctrl+C always quits.
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+
+		// ? toggles the help overlay from anywhere; Esc dismisses it.
+		if key.Matches(msg, m.keys.Help) {
+			m.helpVisible = !m.helpVisible
+			return m, nil
+		}
+		if m.helpVisible && msg.Type == tea.KeyEsc {
+			m.helpVisible = false
+			return m, nil
+		}
+		// While the help overlay is shown, swallow all other keys.
+		if m.helpVisible {
+			return m, nil
 		}
 
 		// Skip global hotkeys while the sidebar search input is active —
@@ -612,7 +628,12 @@ func (m AppModel) View() string {
 	inputView := m.input.View()
 
 	chatAndInput := lipgloss.JoinVertical(lipgloss.Left, chatView, inputView)
-	return lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, chatAndInput)
+	base := lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, chatAndInput)
+
+	if m.helpVisible {
+		return renderHelpOverlay(m.keys.HelpSections(), m.layout.TotalWidth, m.layout.TotalHeight)
+	}
+	return base
 }
 
 // titleCmd returns a command that updates the window/tab title to reflect the

@@ -358,10 +358,19 @@ func Render(m Model) string {
 		lines = append(lines, rowStyle.Width(rowWidth+1).Render(rowContent))
 	}
 
-	// Scroll indicator row.
+	// Footer row: scroll indicator (when list overflows) + "? help" hint.
+	// Both share one line to stay compact; the hint is right-aligned.
+	const helpHint = "? help"
+	footerWidth := rowWidth + 1 // matches other rows
 	if len(m.items) > m.height {
-		indicator := fmt.Sprintf("  ↕ %d/%d", m.cursor+1, len(m.items))
-		lines = append(lines, styles.SubtleStyle.Width(rowWidth+1).Render(indicator))
+		scroll := fmt.Sprintf("↕ %d/%d", m.cursor+1, len(m.items))
+		gap := footerWidth - lipgloss.Width(scroll) - lipgloss.Width(helpHint) - 2 // 2 for leading "  "
+		gap = max(gap, 1)
+		indicator := "  " + scroll + strings.Repeat(" ", gap) + helpHint
+		lines = append(lines, styles.SubtleStyle.Width(footerWidth).Render(indicator))
+	} else if len(m.items) < m.height {
+		// Spare rows available — show hint without consuming a channel slot.
+		lines = append(lines, styles.SubtleStyle.Width(footerWidth).Render("  "+helpHint))
 	}
 
 	return strings.Join(lines, "\n")

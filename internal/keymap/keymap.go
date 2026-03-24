@@ -167,6 +167,52 @@ func DefaultKeyMap() KeyMap {
 	}
 }
 
+// HelpSection groups related keybindings under a named heading for the help popup.
+type HelpSection struct {
+	Title    string
+	Bindings []key.Binding
+}
+
+// HelpSections returns all keybindings organised into named sections, ordered
+// from most-used to least-used. Editing this method is the only change needed
+// when keybindings are added or reorganised — the help popup renders it automatically.
+func (k KeyMap) HelpSections() []HelpSection {
+	return []HelpSection{
+		{
+			Title:    "Panels",
+			Bindings: []key.Binding{k.FocusSidebar, k.FocusChat, k.FocusInput, k.NextPanel},
+		},
+		{
+			Title:    "Channel",
+			Bindings: []key.Binding{k.Select, k.PreviewChannel, k.Search},
+		},
+		{
+			Title:    "Chat — Navigate",
+			Bindings: []key.Binding{k.Up, k.Down, k.JumpToBottom, k.JumpToTop, k.JumpToUnread, k.ScrollUp, k.ScrollDown, k.PageUp, k.PageDown},
+		},
+		{
+			Title:    "Chat — Copy",
+			Bindings: []key.Binding{k.VisualMode, k.Yank},
+		},
+		{
+			Title:    "Message Input",
+			Bindings: []key.Binding{k.Send, k.Newline},
+		},
+		{
+			Title:    "Files & Images",
+			Bindings: []key.Binding{k.OpenAttachment, k.CloseAttachmentPicker},
+		},
+		{
+			Title:    "Sidebar — Navigate",
+			Bindings: []key.Binding{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.ScrollUp, k.ScrollDown},
+		},
+		{
+			Title:    "Global",
+			Bindings: []key.Binding{k.Help, k.ToggleName, k.Quit},
+		},
+	}
+}
+
 // ShortHelp returns the bindings shown in the mini help bar.
 func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Search, k.JumpToTop, k.JumpToBottom, k.ScrollUp, k.ScrollDown, k.FocusInput, k.Quit}
