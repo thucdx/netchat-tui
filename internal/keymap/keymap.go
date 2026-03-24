@@ -24,7 +24,8 @@ type KeyMap struct {
 
 	// Panel focus switching
 	FocusInput   key.Binding // i or a — focus message input
-	FocusSidebar key.Binding // Esc — return focus to sidebar
+	FocusChat    key.Binding // ] — jump directly to chat dialogue
+	FocusSidebar key.Binding // [ — jump directly to sidebar
 	NextPanel    key.Binding // Tab — cycle focus between panels
 
 	// Chat scroll
@@ -89,9 +90,13 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("i", "a"),
 			key.WithHelp("i/a", "type message"),
 		),
+		FocusChat: key.NewBinding(
+			key.WithKeys("]"),
+			key.WithHelp("]", "go to chat"),
+		),
 		FocusSidebar: key.NewBinding(
-			key.WithKeys("esc"),
-			key.WithHelp("esc", "back to channels"),
+			key.WithKeys("["),
+			key.WithHelp("[", "go to sidebar"),
 		),
 		NextPanel: key.NewBinding(
 			key.WithKeys("tab"),
@@ -165,7 +170,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.JumpToTop, k.JumpToBottom, k.Select, k.Search, k.ToggleName},
-		{k.FocusInput, k.FocusSidebar, k.NextPanel},
+		{k.FocusInput, k.FocusChat, k.FocusSidebar, k.NextPanel},
 		{k.ScrollUp, k.ScrollDown, k.PageUp, k.PageDown},
 		{k.Send, k.Newline, k.Quit, k.Help},
 		{k.OpenAttachment, k.CloseAttachmentPicker, k.JumpToUnread},

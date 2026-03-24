@@ -342,7 +342,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// These must be checked before the error-banner guard.
 		if m.IsVisualMode() {
 			switch {
-			case key.Matches(msg, m.keys.FocusSidebar): // Esc
+			case msg.Type == tea.KeyEsc:
 				m.ExitVisualMode()
 				m.refreshContent()
 				return m, nil
@@ -360,7 +360,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Esc dismisses the error banner when one is shown.
-		if key.Matches(msg, m.keys.FocusSidebar) && m.err != nil {
+		if msg.Type == tea.KeyEsc && m.err != nil {
 			m.err = nil
 			return m, nil
 		}

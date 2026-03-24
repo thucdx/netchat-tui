@@ -201,7 +201,7 @@ func (m Model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// ── Normal search input ───────────────────────────────────────────────────
 	switch {
-	case key.Matches(msg, m.keys.FocusSidebar): // Esc
+	case msg.Type == tea.KeyEsc:
 		m.exitSearch()
 		return m, nil
 

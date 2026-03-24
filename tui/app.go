@@ -213,12 +213,28 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
+			// ] → chat from sidebar or input.
+			case key.Matches(msg, m.keys.FocusChat):
+				if m.focus == FocusSidebar || m.focus == FocusInput {
+					m.focus = FocusChat
+					m.syncFocus()
+					return m, nil
+				}
+
+			// [ → sidebar from chat or input.
 			case key.Matches(msg, m.keys.FocusSidebar):
 				if m.focus == FocusInput || m.focus == FocusChat {
 					m.focus = FocusSidebar
 					m.syncFocus()
 					return m, nil
 				}
+
+			// Esc from input returns to chat (not sidebar) so the flow
+			// i → type → Esc lands back in the chat dialogue.
+			case msg.Type == tea.KeyEsc && m.focus == FocusInput:
+				m.focus = FocusChat
+				m.syncFocus()
+				return m, nil
 
 			case key.Matches(msg, m.keys.ToggleName):
 				if m.focus == FocusSidebar {
