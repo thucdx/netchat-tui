@@ -144,6 +144,15 @@ func (ws *WSClient) readLoop(conn *websocket.Conn, done chan struct{}) {
 	}
 }
 
+// Done returns a channel that is closed when the current reader goroutine stops
+// (i.e., when the WebSocket connection drops). Callers can select on this to
+// detect disconnection without blocking on the Events channel.
+func (ws *WSClient) Done() <-chan struct{} {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	return ws.done
+}
+
 // Close cleanly shuts down the connection and the reader goroutine.
 func (ws *WSClient) Close() {
 	// Fix 1 + Fix 2: snapshot fields under the mutex.

@@ -21,18 +21,21 @@ A keyboard-driven terminal UI client for **netchat.viettel.vn** (Mattermost v4),
 
 ## Features
 
-- **Real-time messaging** via WebSocket — new messages appear instantly without polling
+- **Real-time messaging** via WebSocket — new messages appear instantly without polling; auto-reconnects if the connection drops
+- **Open attachments** — press `o` on any message with files to download and open them with your default app; inline picker for multi-file messages
+- **Unread marker** — `──── unread ────` divider marks your last read position; `r` jumps straight to it
 - **All channel types** in one unified sidebar: DMs, Group messages, Public, and Private channels
 - **Unread badges** per channel; automatically cleared when you open a channel
 - **Muted channel** indicators — distinct icon and dimmed style
 - **Markdown rendering** powered by [glamour](https://github.com/charmbracelet/glamour) — code blocks, bold, italics, lists, and more
-- **Image & file previews** — inline terminal art for images, placeholder text for other files
+- **Image & file previews** — inline terminal art for images; press `o` on an image message to view it in a full-pane popup overlay
 - **Message editing** — `(edited)` marker on server-edited posts
 - **Infinite scroll** — scroll to the top of any channel to page in older messages
 - **Sidebar search** — fuzzy-search joined channels/DMs and discover new ones via the API; open a new DM or join a public channel directly from the search results
 - **Display name toggle** — switch between contact name (first + last name) and account name (username) for all authors and channel labels at once
 - **Resizable sidebar** — drag the right border left/right with the mouse
 - **Vim-style navigation** — `j/k`, `gg`, `G`, `Ctrl+U/D`, `Ctrl+B/F` throughout
+- **Visual selection & copy** — `V` enters visual mode; `j`/`k` extends the selection; `y` copies selected messages to the clipboard
 
 ---
 
@@ -204,16 +207,22 @@ Press `y` or `Enter` to confirm, any other key to cancel.
 
 | Key | Action |
 |-----|--------|
-| `k` / `↑` | Scroll up one line |
-| `j` / `↓` | Scroll down one line |
-| `Ctrl+U` | Scroll up half page |
-| `Ctrl+D` | Scroll down half page |
+| `j` / `↓` | Move cursor to next (newer) message |
+| `k` / `↑` | Move cursor to previous (older) message |
+| `Ctrl+U` | Scroll viewport up half page |
+| `Ctrl+D` | Scroll viewport down half page |
 | `Ctrl+B` | Page up |
 | `Ctrl+F` | Page down |
-| `gg` | Jump to oldest message |
-| `G` | Jump to latest message |
+| `gg` | Cursor to oldest loaded message |
+| `G` | Cursor to newest message |
+| `r` | Jump to first unread message |
+| `o` or `l` | Open attachment(s) of cursor message; images open in popup overlay |
+| `h` | Close attachment picker / image popup |
+| `V` | Enter visual selection mode (anchored at cursor) |
+| `y` | Yank (copy) selected messages to clipboard; exit visual mode |
+| `Esc` | Exit visual mode |
 
-> Scrolling to the **very top** automatically loads the previous page of messages.
+> Moving the cursor to the **top of the loaded buffer** automatically loads the previous page of messages.
 
 ### Message input
 
@@ -241,6 +250,29 @@ Press `n` while the sidebar has focus to switch how user names are shown **every
 | **Account name** | Raw username (e.g. `nguyenvan.a`) |
 
 The toggle applies to DMs and Group channels only; public/private channel names are unaffected.
+
+---
+
+## tmux integration
+
+When running inside tmux, netchat-tui automatically updates the **tab title** with your unread count:
+
+```
+netchat-tui [12/3]   ← 12 unread messages across 3 channels
+netchat-tui          ← everything read
+```
+
+Only **unmuted** channels are counted.
+
+### How it works
+
+At startup (when `$TMUX` is set) the app:
+1. Disables `automatic-rename` for the current window (prevents tmux from fighting our custom title)
+2. Calls `tmux rename-window` directly on every unread change
+
+On exit it resets the window name to `netchat-tui` and restores `automatic-rename`.
+
+No tmux configuration required — everything is set automatically per-window.
 
 ---
 

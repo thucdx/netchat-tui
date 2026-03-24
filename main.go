@@ -12,21 +12,27 @@ import (
 	"github.com/thucdx/netchat-tui/tui"
 )
 
-// setupTmux enables window-title renaming for the current tmux window so that
-// netchat-tui can update the tab with unread counts via OSC 2 escape sequences.
-// Returns a cleanup function that resets the window title to a plain
-// "netchat-tui" string when the app exits.
-// No-op (and returns a no-op cleanup) when not running inside tmux.
-func setupTmux() func() {
+// setupTmux configures the current tmux window for reliable title updates.
+// It disables automatic-rename (which would fight our custom title) and returns:
+//   - a cleanup function that resets the window name and restores automatic-rename on exit
+//   - a titleUpdater function that calls "tmux rename-window <title>" directly
+//
+// When not inside tmux both return values are no-ops / nil.
+func setupTmux() (cleanup func(), titleUpdater func(string)) {
 	if os.Getenv("TMUX") == "" {
-		return func() {}
+		return func() {}, nil
 	}
-	// Enable rename for this window only (not a global change).
-	exec.Command("tmux", "set-window-option", "allow-rename", "on").Run() //nolint:errcheck
+	// Turn off automatic-rename so tmux doesn't immediately override our title.
+	exec.Command("tmux", "set-window-option", "automatic-rename", "off").Run() //nolint:errcheck
+
 	return func() {
-		// Clear the unread indicator from the tab title on exit.
-		fmt.Fprint(os.Stdout, "\033]2;netchat-tui\007")
-	}
+			// Restore the window name and re-enable automatic-rename on exit.
+			exec.Command("tmux", "rename-window", "netchat-tui").Run()           //nolint:errcheck
+			exec.Command("tmux", "set-window-option", "automatic-rename", "on"). //nolint:errcheck
+													Run()
+		}, func(title string) {
+			exec.Command("tmux", "rename-window", title).Run() //nolint:errcheck
+		}
 }
 
 // authWrapper is a thin root model that captures AuthSuccessMsg emitted by
@@ -90,13 +96,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Enable tmux window-title renaming and schedule cleanup on exit.
-	defer setupTmux()()
+	// Configure tmux window-title integration and schedule cleanup on exit.
+	tmuxCleanup, tmuxTitleFn := setupTmux()
+	defer tmuxCleanup()
 
 	// Launch the main chat UI.
 	app := tui.NewAppModel(apiClient)
 	if cfg.SidebarLimit > 0 {
 		app = app.WithSidebarLimit(cfg.SidebarLimit)
+	}
+	if tmuxTitleFn != nil {
+		app = app.WithTitleUpdater(tmuxTitleFn)
 	}
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {

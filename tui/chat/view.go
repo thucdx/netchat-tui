@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -50,7 +51,11 @@ func newMarkdownRenderer(width int) func(string) string {
 // Each unique user gets a rotating colour on the header bar for easy scanning.
 // Message content is rendered with glamour (markdown + syntax highlighting).
 // Shows "(edited)" for posts with EditAt > 0.
-func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, useContactName bool) string {
+// cursor is the index of the highlighted post (-1 = none).
+// lastViewedAt is the Unix-ms timestamp of the channel member's last read; posts
+// with CreateAt > lastViewedAt after the first such post get an unread divider.
+// visualStart and visualEnd define the inclusive range of the visual selection (-1,-1 = none).
+func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, fileInfoCache map[string]api.FileInfo, useContactName bool, cursor int, lastViewedAt int64, visualStart int, visualEnd int) string {
 	if len(posts) == 0 {
 		return ""
 	}
@@ -59,29 +64,55 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 	var sb strings.Builder
 	lastUserID := ""
 	var currentBg lipgloss.Color
+	dividerInserted := false
+	needLeadingNewline := false // tracks whether to emit a "\n" separator before the next block
 
 	for i, post := range posts {
+		// Insert the unread divider before the first unread post.
+		if lastViewedAt > 0 && !dividerInserted && post.CreateAt > lastViewedAt {
+			dividerInserted = true
+			divider := styles.UnreadDivider.Render("──── unread ────")
+			centred := lipgloss.PlaceHorizontal(width, lipgloss.Center, divider)
+			if needLeadingNewline || i > 0 {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(centred)
+			// After the divider, the next post should be separated by a newline.
+			needLeadingNewline = true
+		}
+
 		// System messages get special rendering (no user background).
 		if post.Type != "" {
 			content := stripANSI(post.Message)
 			if content == "" {
 				content = "— system message —"
 			}
-			if i > 0 {
+			if needLeadingNewline || i > 0 {
 				sb.WriteString("\n")
 			}
-			sb.WriteString(styles.MessageSystem.Render(content))
+			block := styles.MessageSystem.Render(content)
+			if i == cursor {
+				block = styles.CursorBorder.Render(block)
+			} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
+				block = styles.VisualSelectionBorder.Render(block)
+			}
+			sb.WriteString(block)
+			needLeadingNewline = true
 			lastUserID = ""
 			currentBg = lipgloss.Color("")
 			continue
 		}
 
-		// Normal post.
+		// Normal post — build the entire block in a local builder first so we
+		// can optionally wrap it with the cursor border in one shot.
 		isGrouped := post.UserID == lastUserID
 
-		if i > 0 {
+		if needLeadingNewline || i > 0 {
 			sb.WriteString("\n")
 		}
+		needLeadingNewline = true
+
+		var block strings.Builder
 
 		if !isGrouped {
 			// Determine per-user palette entry.
@@ -105,34 +136,63 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			used := lipgloss.Width(usernameStr) + lipgloss.Width(timestampStr)
 			if width > used {
 				pad := lipgloss.NewStyle().Background(currentBg).Render(strings.Repeat(" ", width-used))
-				sb.WriteString(usernameStr + timestampStr + pad + "\n")
+				block.WriteString(usernameStr + timestampStr + pad + "\n")
 			} else {
-				sb.WriteString(usernameStr + timestampStr + "\n")
+				block.WriteString(usernameStr + timestampStr + "\n")
 			}
 		}
 
 		// Render content with glamour (handles markdown, code blocks, images, etc.).
 		// Strip raw ANSI from the source first so glamour sees clean markdown.
 		rendered := renderMD(stripANSI(post.Message))
-		sb.WriteString(rendered)
+		block.WriteString(rendered)
 
 		// Show "(edited)" if applicable.
 		if post.EditAt > 0 {
-			sb.WriteString(" " + styles.MessageEdited.Render("(edited)"))
+			block.WriteString(" " + styles.MessageEdited.Render("(edited)"))
 		}
 
-		// Render file attachments (images as terminal art, other files as placeholder).
+		// Render file attachments: images as terminal art, other files as metadata lines.
 		for _, fid := range post.FileIds {
-			if rendered, ok := imageCache[fid]; ok && rendered != "" {
-				sb.WriteString("\n")
-				sb.WriteString(rendered)
+			if imgRendered, ok := imageCache[fid]; ok && imgRendered != "" {
+				// Image rendered as terminal art — already handled by imageCache.
+				block.WriteString("\n")
+				block.WriteString(imgRendered)
+			} else if fi, ok := fileInfoCache[fid]; ok {
+				// Non-image (or image that failed to render) — show metadata line.
+				block.WriteString("\n")
+				block.WriteString("📎 " + stripANSI(fi.Name) + "  (" + formatFileSize(fi.Size) + ")")
 			}
+			// If neither cache has the file, skip silently (metadata not yet loaded).
 		}
+
+		// Apply cursor border to the whole block when this post is selected.
+		// Visual selection border is applied for posts in [visualStart, visualEnd],
+		// but cursor border takes priority when i == cursor.
+		blockStr := block.String()
+		if i == cursor {
+			blockStr = styles.CursorBorder.Render(blockStr)
+		} else if visualStart >= 0 && i >= visualStart && i <= visualEnd {
+			blockStr = styles.VisualSelectionBorder.Render(blockStr)
+		}
+		sb.WriteString(blockStr)
 
 		lastUserID = post.UserID
 	}
 
 	return sb.String()
+}
+
+// formatFileSize returns a human-readable file size string.
+func formatFileSize(bytes int64) string {
+	switch {
+	case bytes < 1024:
+		return fmt.Sprintf("%d B", bytes)
+	case bytes < 1048576:
+		return fmt.Sprintf("%d KB", bytes/1024)
+	default:
+		return fmt.Sprintf("%d MB", bytes/1048576)
+	}
 }
 
 // FormatTimestamp converts a Unix millisecond timestamp to a human-readable string.

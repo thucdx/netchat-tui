@@ -3,8 +3,13 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -97,6 +102,7 @@ type AppModel struct {
 	teams        []api.Team  // all teams the user belongs to (for channel search)
 	sidebarWidth int  // total sidebar width including border; resizable via drag
 	dragging     bool // true while the user is dragging the sidebar border
+	titleUpdater func(string) // if non-nil, called instead of tea.SetWindowTitle
 
 	sidebar sidebar.Model
 	chat    chat.Model
@@ -126,6 +132,15 @@ func NewAppModel(apiClient *api.Client) AppModel {
 // Call this after NewAppModel before starting the Bubbletea program.
 func (m AppModel) WithSidebarLimit(n int) AppModel {
 	m.sidebar.SetLimit(n)
+	return m
+}
+
+// WithTitleUpdater sets a custom function that is called with the desired window
+// title string whenever the unread state changes. When set, it replaces the
+// default tea.SetWindowTitle behavior. Use this to drive tmux window renaming
+// directly (e.g., exec.Command("tmux", "rename-window", title)).
+func (m AppModel) WithTitleUpdater(fn func(string)) AppModel {
+	m.titleUpdater = fn
 	return m
 }
 
@@ -300,6 +315,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Set channel on chat model immediately (before posts arrive).
 		m.chat.SetChannelInfo(msg.ChannelID, channelName)
+		// Pass the last-viewed timestamp so the unread marker and CursorToUnread work.
+		if ch := m.sidebar.SelectedChannel(); ch != nil {
+			m.chat.SetLastViewedAt(ch.Member.LastViewedAt)
+		}
 		// Clear sidebar unread badge.
 		m.sidebar.ClearUnread(msg.ChannelID)
 		if m.api != nil {
@@ -340,6 +359,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.imageCache[k] = v
 		}
 		m.chat = m.chat.SetImageCache(m.imageCache)
+		if len(msg.FileInfos) > 0 {
+			m.chat.SetFileInfoCache(msg.FileInfos)
+		}
 		return m, nil
 
 	// ── Sending messages ──────────────────────────────────────────────────────
@@ -361,6 +383,69 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.SetSending(false)
 		// Show error in the chat pane banner.
 		m.chat.SetError(msg.Err)
+		return m, nil
+
+	// ── File open ─────────────────────────────────────────────────────────────
+
+	case messages.OpenFileMsg:
+		file := msg.File
+		apiClient := m.api
+		return m, func() tea.Msg {
+			// Sanitise API-supplied fields to prevent path traversal.
+			// filepath.Base strips any directory component (e.g. "../../etc/passwd").
+			safeID := filepath.Base(file.ID)
+			safeExt := filepath.Base(file.Extension)
+			if safeID == "" || safeID == "." || safeExt == "" || safeExt == "." {
+				return ErrorMsg{Err: fmt.Errorf("open file: invalid file metadata")}
+			}
+
+			// No API client = nothing to download; bail early before touching disk.
+			if apiClient == nil {
+				return ErrorMsg{Err: fmt.Errorf("open file: no API client available")}
+			}
+
+			// Build a stable temp path keyed by file ID so repeated opens hit cache.
+			dir := filepath.Join(os.TempDir(), "netchat-tui")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return ErrorMsg{Err: fmt.Errorf("open file: create temp dir: %w", err)}
+			}
+			path := filepath.Join(dir, safeID+"."+safeExt)
+
+			// Download only if not already cached on disk.
+			if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+				data, err := apiClient.DownloadFile(file.ID)
+				if err != nil {
+					return ErrorMsg{Err: fmt.Errorf("open file: download: %w", err)}
+				}
+				if err := os.WriteFile(path, data, 0o600); err != nil {
+					return ErrorMsg{Err: fmt.Errorf("open file: write: %w", err)}
+				}
+			}
+
+			// Open with the OS default application (non-blocking).
+			// go cmd.Wait() reaps the child process to avoid zombies.
+			var cmd *exec.Cmd
+			switch runtime.GOOS {
+			case "darwin":
+				cmd = exec.Command("open", path)
+			case "windows":
+				cmd = exec.Command("cmd", "/c", "start", "", path)
+			default:
+				cmd = exec.Command("xdg-open", path)
+			}
+			if err := cmd.Start(); err != nil {
+				return ErrorMsg{Err: fmt.Errorf("open file: launch viewer: %w", err)}
+			}
+			go cmd.Wait() //nolint:errcheck — we only care about launching, not exit code
+			return nil
+		}
+
+	// ── Clipboard yank ────────────────────────────────────────────────────────
+
+	case messages.YankMsg:
+		if err := copyToClipboard(msg.Text); err != nil {
+			log.Printf("yank: clipboard write failed: %v", err)
+		}
 		return m, nil
 
 	case messages.LoadMorePostsMsg:
@@ -399,6 +484,22 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.handleWSEvent(msg.Event)
 		// Keep listening for next event.
 		return m, tea.Batch(cmd, m.waitForWSEvent())
+
+	case messages.WSDisconnectedMsg:
+		// Connection dropped — reconnect with retry in the background.
+		ws := m.ws
+		return m, func() tea.Msg {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if err := api.ConnectWithRetry(ctx, ws); err != nil {
+				return ErrorMsg{Err: fmt.Errorf("WebSocket reconnect failed: %w", err)}
+			}
+			return messages.WSReconnectedMsg{}
+		}
+
+	case messages.WSReconnectedMsg:
+		// Reconnected — resume listening for events.
+		return m, m.waitForWSEvent()
 	}
 
 	// Propagate spinner ticks and other internal messages to sub-models.
@@ -490,9 +591,11 @@ func (m AppModel) View() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, chatAndInput)
 }
 
-// titleCmd returns a tea.SetWindowTitle command reflecting the current unread
-// state. Format: "netchat-tui [msgs/channels]" when there are unreads,
-// "netchat-tui" when everything is read. Only unmuted channels are counted.
+// titleCmd returns a command that updates the window/tab title to reflect the
+// current unread state. Format: "netchat-tui [msgs/channels]" when there are
+// unmuted unreads, "netchat-tui" otherwise.
+// When a custom titleUpdater is set (e.g., for tmux), it is called directly;
+// otherwise tea.SetWindowTitle (OSC 2) is used.
 func (m AppModel) titleCmd() tea.Cmd {
 	msgs, chs := m.sidebar.UnreadSummary()
 	var title string
@@ -500,6 +603,13 @@ func (m AppModel) titleCmd() tea.Cmd {
 		title = "netchat-tui"
 	} else {
 		title = fmt.Sprintf("netchat-tui [%d/%d]", msgs, chs)
+	}
+	if m.titleUpdater != nil {
+		fn, t := m.titleUpdater, title
+		return func() tea.Msg {
+			fn(t)
+			return nil
+		}
 	}
 	return tea.SetWindowTitle(title)
 }
@@ -711,7 +821,7 @@ func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
 }
 
 // cmdFetchImages downloads thumbnails for the given file IDs and renders them
-// as terminal images. Non-image files and download failures are silently skipped.
+// as terminal images. Non-image files are collected as FileInfo metadata.
 func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	if len(fileIDs) == 0 {
 		return nil
@@ -719,43 +829,35 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	apiClient := m.api
 	return func() tea.Msg {
 		rendered := make(map[string]string, len(fileIDs))
+		fileInfos := make(map[string]api.FileInfo, len(fileIDs))
 		// Limit concurrent processing to avoid hammering the server.
 		for _, fid := range fileIDs {
 			info, err := apiClient.GetFileInfo(fid)
 			if err != nil {
+				log.Printf("cmdFetchImages: GetFileInfo(%s): %v", fid, err)
 				continue
 			}
-			// Only render image MIME types.
+			// Always store FileInfo for use in the file attachment line renderer.
+			fileInfos[fid] = info
+			// Only render image MIME types as terminal art.
 			if !isImageMIME(info.MimeType) {
-				// Show a file placeholder keyed by file ID.
-				rendered[fid] = filePlaceholder(info)
 				continue
 			}
 			data, err := apiClient.DownloadFileThumbnail(fid)
 			if err != nil {
-				rendered[fid] = filePlaceholder(info)
 				continue
 			}
 			r := chat.RenderImageBytes(data, 48)
-			if r == "" {
-				r = filePlaceholder(info)
+			if r != "" {
+				rendered[fid] = r
 			}
-			rendered[fid] = r
 		}
-		return messages.ImagesReadyMsg{Images: rendered}
+		return messages.ImagesReadyMsg{Images: rendered, FileInfos: fileInfos}
 	}
 }
 
 func isImageMIME(mime string) bool {
 	return strings.HasPrefix(mime, "image/")
-}
-
-func filePlaceholder(info api.FileInfo) string {
-	icon := "📎"
-	if strings.HasPrefix(info.MimeType, "image/") {
-		icon = "🖼"
-	}
-	return icon + " " + info.Name + "\n"
 }
 
 func (m AppModel) cmdSendPost(channelID, text string) tea.Cmd {
@@ -795,17 +897,23 @@ func (m AppModel) cmdStartWS() tea.Cmd {
 }
 
 // waitForWSEvent blocks until the next event arrives on the WS channel.
+// It also selects on ws.Done() so that a dropped connection is detected
+// immediately rather than blocking forever on ws.Events.
 func (m AppModel) waitForWSEvent() tea.Cmd {
 	ws := m.ws
 	if ws == nil {
 		return nil
 	}
 	return func() tea.Msg {
-		event, ok := <-ws.Events
-		if !ok {
-			return nil // channel closed
+		select {
+		case event, ok := <-ws.Events:
+			if !ok {
+				return messages.WSDisconnectedMsg{}
+			}
+			return messages.WSEventMsg{Event: event}
+		case <-ws.Done():
+			return messages.WSDisconnectedMsg{}
 		}
-		return messages.WSEventMsg{Event: event}
 	}
 }
 
@@ -967,6 +1075,25 @@ func (m AppModel) cmdJoinChannel(channelID string) tea.Cmd {
 		}
 		return channelJoinedMsg{channel: ch}
 	}
+}
+
+// copyToClipboard writes text to the OS clipboard using the platform's native tool.
+func copyToClipboard(text string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "clip")
+	default: // linux / bsd
+		if _, err := exec.LookPath("xclip"); err == nil {
+			cmd = exec.Command("xclip", "-selection", "clipboard")
+		} else {
+			cmd = exec.Command("xsel", "--clipboard", "--input")
+		}
+	}
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
 }
 
 // unmarshalPostFromEvent extracts and JSON-decodes a Post from event.Data["post"].

@@ -38,11 +38,11 @@ func TestShortHelp(t *testing.T) {
 	}
 }
 
-// TestFullHelp verifies FullHelp() returns 4 groups.
+// TestFullHelp verifies FullHelp() returns 6 groups.
 func TestFullHelp(t *testing.T) {
 	km := DefaultKeyMap()
 	full := km.FullHelp()
-	if len(full) != 4 {
-		t.Errorf("FullHelp() returned %d groups, want 4", len(full))
+	if len(full) != 6 {
+		t.Errorf("FullHelp() returned %d groups, want 6", len(full))
 	}
 }

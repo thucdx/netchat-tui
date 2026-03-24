@@ -64,12 +64,15 @@ func TestSearchActivatedBySlash(t *testing.T) {
 	}
 }
 
-func TestSearchActivatedByCtrlF(t *testing.T) {
+// TestSearchNotActivatedByCtrlF verifies that ctrl+f no longer opens search
+// (ctrl+f was removed from the Search binding to resolve a collision with the
+// chat-pane PageDown binding; use '/' to open search instead).
+func TestSearchNotActivatedByCtrlF(t *testing.T) {
 	m := newSearchModel()
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
 	m = updated.(Model)
-	if !m.search.active {
-		t.Error("expected search to be active after ctrl+f")
+	if m.search.active {
+		t.Error("ctrl+f should not activate search (binding was removed to avoid collision with PageDown)")
 	}
 }
 

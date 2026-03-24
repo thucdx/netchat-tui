@@ -41,6 +41,15 @@ type KeyMap struct {
 	// for DM and group channels in the sidebar.
 	ToggleName key.Binding // n — toggle contact name / account name
 
+	// Chat message cursor actions
+	OpenAttachment        key.Binding // o or l — open attachment for cursor post
+	CloseAttachmentPicker key.Binding // h — close attachment picker
+	JumpToUnread          key.Binding // r — jump to first unread post
+
+	// Visual mode (Features 3 & 4)
+	VisualMode key.Binding // V — enter/exit visual selection mode
+	Yank       key.Binding // y — copy selected messages to clipboard
+
 	// App
 	// Quit must only be matched when the sidebar is focused.
 	// The model must NOT check this binding when the input box has focus,
@@ -69,8 +78,8 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("gg", "jump to top"),
 		),
 		Search: key.NewBinding(
-			key.WithKeys("/", "ctrl+f"),
-			key.WithHelp("/ ctrl+f", "search"),
+			key.WithKeys("/"),
+			key.WithHelp("/", "search"),
 		),
 		Select: key.NewBinding(
 			key.WithKeys("enter"),
@@ -124,6 +133,26 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("n"),
 			key.WithHelp("n", "toggle name display"),
 		),
+		OpenAttachment: key.NewBinding(
+			key.WithKeys("o", "l"),
+			key.WithHelp("o/l", "open attachment"),
+		),
+		CloseAttachmentPicker: key.NewBinding(
+			key.WithKeys("h"),
+			key.WithHelp("h", "close picker"),
+		),
+		JumpToUnread: key.NewBinding(
+			key.WithKeys("r"),
+			key.WithHelp("r", "jump to unread"),
+		),
+		VisualMode: key.NewBinding(
+			key.WithKeys("V"),
+			key.WithHelp("V", "visual select"),
+		),
+		Yank: key.NewBinding(
+			key.WithKeys("y"),
+			key.WithHelp("y", "yank/copy"),
+		),
 	}
 }
 
@@ -139,5 +168,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.FocusInput, k.FocusSidebar, k.NextPanel},
 		{k.ScrollUp, k.ScrollDown, k.PageUp, k.PageDown},
 		{k.Send, k.Newline, k.Quit, k.Help},
+		{k.OpenAttachment, k.CloseAttachmentPicker, k.JumpToUnread},
+		{k.VisualMode, k.Yank},
 	}
 }

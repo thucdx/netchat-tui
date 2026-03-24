@@ -35,6 +35,8 @@ type WSEventMsg struct{ Event api.WSEvent }
 type ImagesReadyMsg struct {
 	// Images maps Mattermost file IDs to rendered ANSI image strings.
 	Images map[string]string
+	// FileInfos maps Mattermost file IDs to their metadata (for non-image file rendering).
+	FileInfos map[string]api.FileInfo
 }
 
 // TriggerSearchMsg is emitted by the sidebar when the search query reaches
@@ -55,3 +57,22 @@ type CreateDirectChannelMsg struct{ UserID string }
 // JoinChannelMsg is emitted by the sidebar when the user confirms joining
 // a public channel found via search.
 type JoinChannelMsg struct{ ChannelID string }
+
+// WSDisconnectedMsg is sent when the WebSocket connection drops unexpectedly,
+// signalling the app to begin a reconnect attempt.
+type WSDisconnectedMsg struct{}
+
+// WSReconnectedMsg is sent after a successful WebSocket reconnect.
+type WSReconnectedMsg struct{}
+
+// OpenFileMsg is emitted when the user opens a file attachment from the chat pane.
+// The handler downloads the file (if not cached) and opens it with the OS default app.
+type OpenFileMsg struct {
+	File api.FileInfo
+}
+
+// YankMsg is emitted by the chat model when the user yanks (copies) selected
+// messages. The app handler writes Text to the OS clipboard.
+type YankMsg struct {
+	Text string
+}

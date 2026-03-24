@@ -213,6 +213,24 @@ var (
 				PaddingLeft(1)
 )
 
+// CursorBorder is the left-border accent applied to the cursor message in the chat pane.
+var CursorBorder = lipgloss.NewStyle().
+	BorderLeft(true).
+	BorderStyle(lipgloss.ThickBorder()).
+	BorderForeground(lipgloss.Color("33")). // bright blue
+	PaddingLeft(1)
+
+// VisualSelectionBorder highlights posts inside the visual selection range.
+// Uses a yellow thick left border to distinguish from the blue cursor border.
+var VisualSelectionBorder = lipgloss.NewStyle().
+	BorderStyle(lipgloss.ThickBorder()).
+	BorderLeft(true).
+	BorderForeground(lipgloss.Color("3")). // yellow
+	PaddingLeft(1)
+
+// UnreadDivider is the style for the "──── unread ────" line shown between read and unread messages.
+var UnreadDivider = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
 // Utility styles
 var (
 	ErrorStyle = lipgloss.NewStyle().
