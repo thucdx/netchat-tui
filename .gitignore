@@ -11,3 +11,9 @@ vendor/
 
 # OS
 .DS_Store
+
+# Claude Code internal files
+.claude/
+
+# Theme preview (standalone tool, not part of the app)
+theme_preview.go
