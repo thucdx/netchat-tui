@@ -33,9 +33,12 @@ type WSEventMsg struct{ Event api.WSEvent }
 // ImagesReadyMsg carries rendered terminal-image strings keyed by file ID.
 // It is dispatched when background image downloads complete.
 type ImagesReadyMsg struct {
-	// Images maps Mattermost file IDs to rendered ANSI image strings.
+	// Images maps Mattermost file IDs to small inline half-block renders.
 	Images map[string]string
-	// FileInfos maps Mattermost file IDs to their metadata (for non-image file rendering).
+	// ImageBytes maps Mattermost file IDs to raw thumbnail bytes.
+	// Stored so the popup can re-render at full popup dimensions on demand.
+	ImageBytes map[string][]byte
+	// FileInfos maps Mattermost file IDs to their metadata.
 	FileInfos map[string]api.FileInfo
 }
 

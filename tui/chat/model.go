@@ -32,8 +32,9 @@ type Model struct {
 	keys        keymap.KeyMap
 	width       int
 	height      int // chat area height (excludes input)
-	imageCache     map[string]string    // keyed by file ID, value is rendered ANSI image string
-	fileInfoCache  map[string]api.FileInfo // metadata for all file attachments
+	imageCache      map[string]string    // inline half-block renders keyed by file ID
+	imageBytesCache map[string][]byte   // raw thumbnail bytes keyed by file ID (for popup)
+	fileInfoCache   map[string]api.FileInfo // metadata for all file attachments
 	useContactName bool                 // true = show first+last name; false = show username
 
 	// Per-message cursor fields (Task #11).
@@ -43,10 +44,10 @@ type Model struct {
 	pickerFiles  []api.FileInfo // files shown in picker
 	pickerCursor int            // highlighted row in picker
 
-	// Image popup fields (Task #17)
-	popupActive bool
-	popupImage  string // pre-rendered ANSI art from imageCache
-	popupTitle  string // filename
+	// Image popup fields
+	popupActive  bool
+	popupFileID  string // file ID whose bytes are rendered in the popup
+	popupTitle   string // filename shown in popup border
 
 	// Visual mode fields (Features 3 & 4)
 	visualMode   bool // true when V visual selection is active
@@ -421,8 +422,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if fi, ok := m.PickerSelected(); ok {
 					m.ClosePicker()
 					// If it's an image with a cached render, show popup.
-					if rendered, ok := m.imageCache[fi.ID]; ok && rendered != "" {
-						m.ActivateImagePopup(rendered, stripANSI(fi.Name))
+					if _, ok := m.imageBytesCache[fi.ID]; ok {
+						m.ActivateImagePopup(fi.ID, stripANSI(fi.Name))
 						return m, nil
 					}
 					return m, func() tea.Msg { return messages.OpenFileMsg{File: fi} }
@@ -479,7 +480,13 @@ func (m Model) View() string {
 	if m.loading {
 		body = m.spinner.View() + " Loading…"
 	} else if m.IsPopupActive() {
-		body = RenderImagePopup(m.popupImage, m.popupTitle, m.width, m.viewport.Height)
+		// Render the popup image at the actual popup dimensions (width-4 cols,
+		// viewport.Height-2 rows) so it fills the available space.
+		imgData := m.imageBytesCache[m.popupFileID]
+		popupCols := m.width - 4
+		popupRows := m.viewport.Height - 2
+		rendered := RenderImageHalfBlock(imgData, popupCols, popupRows)
+		body = RenderImagePopup(rendered, m.popupTitle, m.width, m.viewport.Height)
 	} else {
 		body = m.viewport.View()
 	}
@@ -657,18 +664,30 @@ func (m Model) PickerCursorIndex() int {
 
 // --- Image popup API (Task #17) ---
 
-// ActivateImagePopup shows the image popup overlay.
-func (m *Model) ActivateImagePopup(image, title string) {
+// ActivateImagePopup shows the image popup for the given file ID.
+// The popup renders from imageBytesCache at view time so it uses the actual
+// popup dimensions rather than a pre-baked size.
+func (m *Model) ActivateImagePopup(fileID, title string) {
 	m.popupActive = true
-	m.popupImage = image
+	m.popupFileID = fileID
 	m.popupTitle = title
 }
 
 // CloseImagePopup dismisses the image popup.
 func (m *Model) CloseImagePopup() {
 	m.popupActive = false
-	m.popupImage = ""
+	m.popupFileID = ""
 	m.popupTitle = ""
+}
+
+// SetImageBytesCache stores raw thumbnail bytes for popup rendering.
+func (m *Model) SetImageBytesCache(cache map[string][]byte) {
+	if m.imageBytesCache == nil {
+		m.imageBytesCache = make(map[string][]byte)
+	}
+	for k, v := range cache {
+		m.imageBytesCache[k] = v
+	}
 }
 
 // IsPopupActive reports whether the image popup is currently shown.

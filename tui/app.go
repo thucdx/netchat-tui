@@ -97,7 +97,8 @@ type AppModel struct {
 	wsCancel     context.CancelFunc // cancels WS reconnect loop
 	userID       string
 	userCache    map[string]api.User // all known users (DM partners + post authors)
-	imageCache   map[string]string   // rendered ANSI image strings keyed by file ID
+	imageCache      map[string]string // inline half-block renders keyed by file ID
+	imageBytesCache map[string][]byte // raw thumbnail bytes keyed by file ID (for popup)
 	ready        bool
 	teams        []api.Team  // all teams the user belongs to (for channel search)
 	sidebarWidth int  // total sidebar width including border; resizable via drag
@@ -373,10 +374,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.imageCache == nil {
 			m.imageCache = make(map[string]string)
 		}
+		if m.imageBytesCache == nil {
+			m.imageBytesCache = make(map[string][]byte)
+		}
 		for k, v := range msg.Images {
 			m.imageCache[k] = v
 		}
+		for k, v := range msg.ImageBytes {
+			m.imageBytesCache[k] = v
+		}
 		m.chat = m.chat.SetImageCache(m.imageCache)
+		m.chat.SetImageBytesCache(m.imageBytesCache)
 		if len(msg.FileInfos) > 0 {
 			m.chat.SetFileInfoCache(msg.FileInfos)
 		}
@@ -838,8 +846,8 @@ func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
 	}
 }
 
-// cmdFetchImages downloads thumbnails for the given file IDs and renders them
-// as terminal images. Non-image files are collected as FileInfo metadata.
+// cmdFetchImages downloads thumbnails for the given file IDs, renders small
+// inline half-block previews, and stores the raw bytes for popup re-rendering.
 func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	if len(fileIDs) == 0 {
 		return nil
@@ -847,17 +855,15 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	apiClient := m.api
 	return func() tea.Msg {
 		rendered := make(map[string]string, len(fileIDs))
+		rawBytes := make(map[string][]byte, len(fileIDs))
 		fileInfos := make(map[string]api.FileInfo, len(fileIDs))
-		// Limit concurrent processing to avoid hammering the server.
 		for _, fid := range fileIDs {
 			info, err := apiClient.GetFileInfo(fid)
 			if err != nil {
 				log.Printf("cmdFetchImages: GetFileInfo(%s): %v", fid, err)
 				continue
 			}
-			// Always store FileInfo for use in the file attachment line renderer.
 			fileInfos[fid] = info
-			// Only render image MIME types as terminal art.
 			if !isImageMIME(info.MimeType) {
 				continue
 			}
@@ -865,12 +871,14 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 			if err != nil {
 				continue
 			}
-			r := chat.RenderImageBytes(data, 48)
+			// Inline thumbnail: small half-block render.
+			r := chat.RenderImageHalfBlock(data, chat.InlineImageCols, chat.InlineImageRows)
 			if r != "" {
 				rendered[fid] = r
+				rawBytes[fid] = data // keep bytes for full-size popup render
 			}
 		}
-		return messages.ImagesReadyMsg{Images: rendered, FileInfos: fileInfos}
+		return messages.ImagesReadyMsg{Images: rendered, ImageBytes: rawBytes, FileInfos: fileInfos}
 	}
 }
 

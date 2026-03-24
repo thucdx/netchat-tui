@@ -1,72 +1,102 @@
 package chat
 
 import (
-	"encoding/base64"
+	"bytes"
 	"fmt"
-	"os"
+	"image"
+	"image/color"
+	_ "image/gif"  // register GIF decoder
+	_ "image/jpeg" // register JPEG decoder
+	_ "image/png"  // register PNG decoder
 	"strings"
 )
 
-// termProtocol identifies which terminal image protocol to use.
-type termProtocol int
+// InlineImageCols is the width (terminal cells) for inline thumbnail renders.
+const InlineImageCols = 30
 
-const (
-	protoNone   termProtocol = iota // no inline image support — show text placeholder
-	protoIterm2                     // iTerm2 inline image protocol (iTerm2, Ghostty, WezTerm, Hyper)
-)
+// InlineImageRows is the height (terminal rows) for inline thumbnail renders.
+// Each row represents 2 pixels via the half-block character ▄.
+const InlineImageRows = 8
 
-// detectTermProtocol checks environment variables to choose the best protocol.
-// Inside tmux/screen, image escape sequences are normally stripped unless
-// allow-passthrough is explicitly enabled, so we default to protoNone there.
-func detectTermProtocol() termProtocol {
-	// In multiplexers, inline images are unreliable without extra configuration.
-	term := os.Getenv("TERM")
-	if strings.HasPrefix(term, "tmux") || strings.HasPrefix(term, "screen") {
-		// Allow override: if NETCHAT_TERM_PROGRAM is set to a known image-capable
-		// terminal, trust it (user has configured allow-passthrough in tmux.conf).
-		if override := strings.ToLower(os.Getenv("NETCHAT_TERM_PROGRAM")); override != "" {
-			return detectByProgName(override)
-		}
-		return protoNone
-	}
-
-	prog := strings.ToLower(os.Getenv("TERM_PROGRAM"))
-	if p := detectByProgName(prog); p != protoNone {
-		return p
-	}
-	// Some terminals set LC_TERMINAL instead of TERM_PROGRAM (e.g. older iTerm2).
-	lc := strings.ToLower(os.Getenv("LC_TERMINAL"))
-	return detectByProgName(lc)
-}
-
-func detectByProgName(name string) termProtocol {
-	switch name {
-	case "iterm.app", "iterm2", "ghostty", "wezterm", "hyper":
-		return protoIterm2
-	}
-	return protoNone
-}
-
-// RenderImageBytes converts raw image bytes (PNG/JPEG/GIF/WebP) to a terminal
-// string using the best available inline image protocol.
-// Returns empty string when no supported protocol is detected — the caller
-// should show a text placeholder instead (avoids pixelated block art).
-func RenderImageBytes(data []byte, maxCols int) string {
-	if len(data) == 0 || maxCols < 4 {
+// RenderImageHalfBlock decodes raw image bytes (PNG/JPEG/GIF) and renders them
+// as terminal half-block (▄) pixel art using 24-bit true-color ANSI sequences.
+//
+// Each terminal cell represents two vertical pixels: the top pixel becomes the
+// cell background and the bottom pixel becomes the foreground of ▄ (lower-half-
+// block character).  The image is scaled to fit within maxCols × maxRows
+// terminal cells while preserving its aspect ratio.
+//
+// Returns an empty string when the data cannot be decoded.
+func RenderImageHalfBlock(data []byte, maxCols, maxRows int) string {
+	if len(data) == 0 || maxCols < 1 || maxRows < 1 {
 		return ""
 	}
-	switch detectTermProtocol() {
-	case protoIterm2:
-		return renderIterm2(data, maxCols)
-	default:
-		return "" // unsupported terminal — caller shows text placeholder
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return ""
 	}
+	return renderHalfBlock(img, maxCols, maxRows)
 }
 
-// renderIterm2 encodes the image bytes using the iTerm2 inline image protocol.
-// Supported by iTerm2, Ghostty, WezTerm, Hyper, and compatible terminals.
-func renderIterm2(data []byte, maxCols int) string {
-	b64 := base64.StdEncoding.EncodeToString(data)
-	// ESC ] 1337 ; File=inline=1;width=<cols>;preserveAspectRatio=1 : <base64> BEL
-	return fmt.Sprintf("\033]1337;File=inline=1;width=%d;preserveAspectRatio=1:%s\a\n", maxCols, b64)
+// renderHalfBlock scales img to fit in maxCols × maxRows terminal cells and
+// renders it using ▄ half-block characters with ANSI true-color sequences.
+func renderHalfBlock(img image.Image, maxCols, maxRows int) string {
+	b := img.Bounds()
+	srcW, srcH := b.Dx(), b.Dy()
+	if srcW == 0 || srcH == 0 {
+		return ""
+	}
+
+	// Each terminal row holds 2 pixel rows.
+	pixW := maxCols
+	pixH := maxRows * 2
+
+	// Scale uniformly to fit, preserving aspect ratio.
+	scaleX := float64(pixW) / float64(srcW)
+	scaleY := float64(pixH) / float64(srcH)
+	scale := scaleX
+	if scaleY < scale {
+		scale = scaleY
+	}
+	dstW := int(float64(srcW) * scale)
+	dstH := int(float64(srcH) * scale)
+	if dstW < 1 {
+		dstW = 1
+	}
+	if dstH < 1 {
+		dstH = 1
+	}
+
+	// pixelAt maps a destination pixel to a source colour via nearest-neighbour.
+	pixelAt := func(px, py int) color.RGBA {
+		sx := b.Min.X + px*srcW/dstW
+		sy := b.Min.Y + py*srcH/dstH
+		if sx >= b.Max.X {
+			sx = b.Max.X - 1
+		}
+		if sy >= b.Max.Y {
+			sy = b.Max.Y - 1
+		}
+		r, g, bv, _ := img.At(sx, sy).RGBA()
+		return color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(bv >> 8), 255}
+	}
+
+	var sb strings.Builder
+	for row := 0; row < dstH; row += 2 {
+		for col := 0; col < dstW; col++ {
+			top := pixelAt(col, row)
+			bot := top // same colour when image has odd height
+			if row+1 < dstH {
+				bot = pixelAt(col, row+1)
+			}
+			// ▄ = lower-half-block: fg = bottom pixel, bg = top pixel.
+			sb.WriteString(fmt.Sprintf(
+				"\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm▄\x1b[0m",
+				bot.R, bot.G, bot.B,
+				top.R, top.G, top.B,
+			))
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
