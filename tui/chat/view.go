@@ -22,17 +22,30 @@ var emojiShortcode = regexp.MustCompile(`:([a-z0-9_+\-]+):`)
 // substituteCustomEmoji replaces :name: patterns in s with rendered terminal art
 // from cache when available.  Patterns already converted by glamour (standard
 // emoji) will not appear as :name: in the input, so only custom ones remain.
+//
+// glamour's reflow library injects ANSI reset+colour sequences at word
+// boundaries (including underscores), which splits a name like
+// ":company_logo:" into ":company_\x1b[...]logo:" in the ANSI output.
+// To work around this, the function strips ANSI from s first, applies the
+// regex on the clean text, and returns the substituted plain text when any
+// replacement was made.  The surrounding glamour colour is lost for those
+// messages, but the emoji art itself is already colourful.
 func substituteCustomEmoji(s string, cache map[string]string) string {
 	if len(cache) == 0 {
 		return s
 	}
-	return emojiShortcode.ReplaceAllStringFunc(s, func(match string) string {
+	plain := stripANSI(s)
+	result := emojiShortcode.ReplaceAllStringFunc(plain, func(match string) string {
 		name := match[1 : len(match)-1]
 		if art, ok := cache[name]; ok && art != "" {
 			return art
 		}
 		return match
 	})
+	if result == plain {
+		return s // nothing substituted — preserve original ANSI styling
+	}
+	return result
 }
 
 // stripANSI removes ANSI escape sequences from s.

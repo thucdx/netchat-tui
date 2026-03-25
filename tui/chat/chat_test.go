@@ -1436,3 +1436,153 @@ func TestOpenAttachment_NonImageFile_OpensFile(t *testing.T) {
 		t.Error("expected non-nil Cmd (OpenFileMsg) for non-image file")
 	}
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Emoji — substituteCustomEmoji
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestSubstituteCustomEmoji_ReplacesKnownName(t *testing.T) {
+	cache := map[string]string{"wave": "<art>"}
+	result := substituteCustomEmoji("hello :wave: world", cache)
+	if !strings.Contains(result, "<art>") {
+		t.Errorf("expected custom emoji art in output, got %q", result)
+	}
+	if strings.Contains(result, ":wave:") {
+		t.Errorf("expected :wave: to be replaced, but it remains in %q", result)
+	}
+}
+
+func TestSubstituteCustomEmoji_LeavesUnknownName(t *testing.T) {
+	cache := map[string]string{"wave": "<art>"}
+	result := substituteCustomEmoji("hello :unknown_emoji: world", cache)
+	if !strings.Contains(result, ":unknown_emoji:") {
+		t.Errorf("expected unknown shortcode to remain as-is, got %q", result)
+	}
+}
+
+func TestSubstituteCustomEmoji_EmptyCacheIsNoop(t *testing.T) {
+	input := "hello :custom: world"
+	result := substituteCustomEmoji(input, nil)
+	if result != input {
+		t.Errorf("nil cache should be a no-op: got %q, want %q", result, input)
+	}
+}
+
+func TestSubstituteCustomEmoji_MultipleInSameMessage(t *testing.T) {
+	cache := map[string]string{
+		"fire": "<fire>",
+		"cool": "<cool>",
+	}
+	result := substituteCustomEmoji(":fire: this is :cool:", cache)
+	if !strings.Contains(result, "<fire>") || !strings.Contains(result, "<cool>") {
+		t.Errorf("expected both custom emoji substituted, got %q", result)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Emoji — renderReactions
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestRenderReactions_StandardEmoji(t *testing.T) {
+	reactions := []api.Reaction{
+		{UserID: "u1", PostID: "p1", EmojiName: "thumbsup"},
+	}
+	result := stripANSI(renderReactions(reactions, nil))
+	if !strings.Contains(result, "👍") {
+		t.Errorf("expected 👍 for standard 'thumbsup' reaction, got %q", result)
+	}
+}
+
+func TestRenderReactions_CustomEmojiFromCache(t *testing.T) {
+	cache := map[string]string{"company_logo": "<logo>"}
+	reactions := []api.Reaction{
+		{UserID: "u1", PostID: "p1", EmojiName: "company_logo"},
+	}
+	result := renderReactions(reactions, cache)
+	if !strings.Contains(result, "<logo>") {
+		t.Errorf("expected custom emoji art from cache, got %q", result)
+	}
+	if strings.Contains(result, ":company_logo:") {
+		t.Errorf("expected :company_logo: to be replaced, but it remains in %q", result)
+	}
+}
+
+func TestRenderReactions_UnknownEmojiShowsFallback(t *testing.T) {
+	reactions := []api.Reaction{
+		{UserID: "u1", PostID: "p1", EmojiName: "totally_unknown"},
+	}
+	result := stripANSI(renderReactions(reactions, nil))
+	if !strings.Contains(result, ":totally_unknown:") {
+		t.Errorf("expected :totally_unknown: fallback, got %q", result)
+	}
+}
+
+func TestRenderReactions_CountShownForMultiple(t *testing.T) {
+	cache := map[string]string{"parrot": "<parrot>"}
+	reactions := []api.Reaction{
+		{UserID: "u1", PostID: "p1", EmojiName: "parrot"},
+		{UserID: "u2", PostID: "p1", EmojiName: "parrot"},
+	}
+	result := stripANSI(renderReactions(reactions, cache))
+	if !strings.Contains(result, "2") {
+		t.Errorf("expected count '2' for two reactions, got %q", result)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Emoji — RenderPosts end-to-end with custom emoji in message text
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestRenderPosts_CustomEmojiSubstitutedInText(t *testing.T) {
+	posts := []api.Post{
+		{ID: "1", UserID: "u1", Message: "check this out :company_logo:", CreateAt: 100},
+	}
+	cache := map[string]string{"company_logo": "<logo_art>"}
+	rendered := RenderPosts(posts, nil, "", 80, nil, nil, false, -1, 0, -1, -1, nil, cache)
+	if !strings.Contains(rendered, "<logo_art>") {
+		t.Errorf("expected custom emoji art in rendered post, got %q", stripANSI(rendered))
+	}
+}
+
+func TestRenderPosts_CustomEmojiInReactions(t *testing.T) {
+	posts := []api.Post{
+		{
+			ID: "1", UserID: "u1", Message: "great work", CreateAt: 100,
+			Metadata: api.PostMetadata{
+				Reactions: []api.Reaction{
+					{UserID: "u2", PostID: "1", EmojiName: "company_logo"},
+				},
+			},
+		},
+	}
+	cache := map[string]string{"company_logo": "<logo_art>"}
+	rendered := RenderPosts(posts, nil, "", 80, nil, nil, false, -1, 0, -1, -1, nil, cache)
+	if !strings.Contains(rendered, "<logo_art>") {
+		t.Errorf("expected custom emoji art in reaction row, got %q", stripANSI(rendered))
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Emoji — SetCustomEmojiCache triggers re-render
+// ────────────────────────────────────────────────────────────────────────────
+
+func TestSetCustomEmojiCache_ReRendersViewport(t *testing.T) {
+	m := newTestModel()
+	posts := []api.Post{
+		{ID: "1", UserID: "u1", Message: "see :custom_wave:", CreateAt: 100},
+	}
+	m.LoadPosts("ch1", "general", makePostList(posts), nil)
+
+	// Before cache: shortcode should appear as-is.
+	before := stripANSI(m.viewport.View())
+	if strings.Contains(before, "<wave_art>") {
+		t.Fatal("art should not appear before cache is set")
+	}
+
+	m = m.SetCustomEmojiCache(map[string]string{"custom_wave": "<wave_art>"})
+
+	after := stripANSI(m.viewport.View())
+	if !strings.Contains(after, "<wave_art>") {
+		t.Errorf("expected art after SetCustomEmojiCache, got %q", after)
+	}
+}
