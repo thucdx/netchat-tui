@@ -70,20 +70,35 @@ func (cm ChannelMember) UnreadCount(ch Channel) int64 {
 	return ch.TotalMsgCount - cm.MsgCount
 }
 
+// Reaction represents a single emoji reaction on a post.
+type Reaction struct {
+	UserID    string `json:"user_id"`
+	PostID    string `json:"post_id"`
+	EmojiName string `json:"emoji_name"`
+	CreateAt  int64  `json:"create_at"`
+}
+
+// PostMetadata holds server-computed data attached to a post (reactions, etc.).
+// Populated automatically by the posts API when the data is present.
+type PostMetadata struct {
+	Reactions []Reaction `json:"reactions"`
+}
+
 // Post represents a single message/post in a channel.
 type Post struct {
-	ID        string   `json:"id"`
-	ChannelID string   `json:"channel_id"`
-	UserID    string   `json:"user_id"`
-	Message   string   `json:"message"`
-	CreateAt  int64    `json:"create_at"`
-	UpdateAt  int64    `json:"update_at"`
-	DeleteAt  int64    `json:"delete_at"`
-	Type      string   `json:"type"`      // "" = normal, "system_*" = system message
-	RootID    string   `json:"root_id"`   // non-empty if this is a thread reply
-	EditAt    int64    `json:"edit_at"`
-	IsPinned  bool     `json:"is_pinned"`
-	FileIds   []string `json:"file_ids"` // IDs of attached files (may be nil)
+	ID        string       `json:"id"`
+	ChannelID string       `json:"channel_id"`
+	UserID    string       `json:"user_id"`
+	Message   string       `json:"message"`
+	CreateAt  int64        `json:"create_at"`
+	UpdateAt  int64        `json:"update_at"`
+	DeleteAt  int64        `json:"delete_at"`
+	Type      string       `json:"type"`      // "" = normal, "system_*" = system message
+	RootID    string       `json:"root_id"`   // non-empty if this is a thread reply
+	EditAt    int64        `json:"edit_at"`
+	IsPinned  bool         `json:"is_pinned"`
+	FileIds   []string     `json:"file_ids"` // IDs of attached files (may be nil)
+	Metadata  PostMetadata `json:"metadata"` // reactions and other server metadata
 }
 
 // PostList is the response from the posts endpoint.

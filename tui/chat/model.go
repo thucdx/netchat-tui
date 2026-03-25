@@ -318,6 +318,44 @@ func (m Model) SetImageCache(cache map[string]string) Model {
 	return m
 }
 
+// AddReaction appends a reaction to the matching post and re-renders the viewport.
+// Silently does nothing if the post is not in the current channel or the reaction
+// is already present (dedup by userID + emojiName).
+func (m *Model) AddReaction(r api.Reaction) {
+	for i := range m.posts {
+		if m.posts[i].ID != r.PostID {
+			continue
+		}
+		for _, existing := range m.posts[i].Metadata.Reactions {
+			if existing.UserID == r.UserID && existing.EmojiName == r.EmojiName {
+				return // already present
+			}
+		}
+		m.posts[i].Metadata.Reactions = append(m.posts[i].Metadata.Reactions, r)
+		m.refreshContent()
+		return
+	}
+}
+
+// RemoveReaction removes a reaction from the matching post and re-renders.
+// Silently does nothing if the post or reaction is not found.
+func (m *Model) RemoveReaction(r api.Reaction) {
+	for i := range m.posts {
+		if m.posts[i].ID != r.PostID {
+			continue
+		}
+		reactions := m.posts[i].Metadata.Reactions
+		for j, existing := range reactions {
+			if existing.UserID == r.UserID && existing.EmojiName == r.EmojiName {
+				m.posts[i].Metadata.Reactions = append(reactions[:j], reactions[j+1:]...)
+				m.refreshContent()
+				return
+			}
+		}
+		return
+	}
+}
+
 // AtTop returns true if the viewport is scrolled to the very top (for pagination trigger).
 func (m Model) AtTop() bool {
 	return m.viewport.AtTop()

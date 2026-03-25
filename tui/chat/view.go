@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -100,6 +101,12 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 	dividerInserted := false
 	needLeadingNewline := false // tracks whether to emit a "\n" separator before the next block
 
+	// Build an ID→Post index so reply quotes can look up the root post cheaply.
+	postsById := make(map[string]*api.Post, len(posts))
+	for i := range posts {
+		postsById[posts[i].ID] = &posts[i]
+	}
+
 	for i, post := range posts {
 		// Insert the unread divider before the first unread post.
 		if lastViewedAt > 0 && !dividerInserted && post.CreateAt > lastViewedAt {
@@ -177,6 +184,27 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			block.WriteString(usernameStr + timestampStr + "\n")
 		}
 
+		// Reply quote: if this post replies to another, show a compact preview of the root.
+		if post.RootID != "" {
+			if root, ok := postsById[post.RootID]; ok {
+				authorName := resolveUsername(root.UserID, userCache, useContactName)
+				preview := strings.ReplaceAll(stripANSI(root.Message), "\n", " ")
+				runes := []rune(preview)
+				if len(runes) > 60 {
+					preview = string(runes[:57]) + "…"
+				}
+				quoteStyle := lipgloss.NewStyle().
+					Foreground(styles.ColorFgMuted).
+					BorderLeft(true).
+					BorderStyle(lipgloss.NormalBorder()).
+					BorderForeground(styles.ColorFgDimmer).
+					PaddingLeft(1).
+					Italic(true)
+				block.WriteString(quoteStyle.Render("↩ " + authorName + ": " + preview))
+				block.WriteString("\n")
+			}
+		}
+
 		// Render content with glamour (handles markdown, code blocks, images, etc.).
 		// Strip raw ANSI from the source first so glamour sees clean markdown.
 		rendered := renderMD(stripANSI(post.Message))
@@ -212,6 +240,12 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			// If neither cache has the file, skip silently (metadata not yet loaded).
 		}
 
+		// Reactions row: group by emoji, sorted by count desc.
+		if len(post.Metadata.Reactions) > 0 {
+			block.WriteString("\n")
+			block.WriteString(renderReactions(post.Metadata.Reactions))
+		}
+
 		// Apply cursor border to the whole block when this post is selected.
 		// Visual selection border is applied for posts in [visualStart, visualEnd],
 		// but cursor border takes priority when i == cursor.
@@ -237,6 +271,97 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 	}
 
 	return sb.String()
+}
+
+// renderReactions formats a slice of reactions as a compact grouped row.
+// Reactions are grouped by emoji, sorted by count descending, then name ascending.
+// Example output: "👍 3  ❤️ 2  😂 1"
+func renderReactions(reactions []api.Reaction) string {
+	counts := make(map[string]int, len(reactions))
+	for _, r := range reactions {
+		counts[r.EmojiName]++
+	}
+
+	type entry struct {
+		name  string
+		count int
+	}
+	entries := make([]entry, 0, len(counts))
+	for name, n := range counts {
+		entries = append(entries, entry{name, n})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count != entries[j].count {
+			return entries[i].count > entries[j].count
+		}
+		return entries[i].name < entries[j].name
+	})
+
+	parts := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ch := emojiChar(e.name)
+		if e.count > 1 {
+			parts = append(parts, ch+" "+fmt.Sprintf("%d", e.count))
+		} else {
+			parts = append(parts, ch)
+		}
+	}
+	return styles.SubtleStyle.Render(strings.Join(parts, "  "))
+}
+
+// emojiChar converts a Mattermost/Slack emoji name to its Unicode character.
+// Covers the most common reactions; falls back to ":name:" for unknown names.
+func emojiChar(name string) string {
+	m := map[string]string{
+		"thumbsup": "👍", "+1": "👍",
+		"thumbsdown": "👎", "-1": "👎",
+		"heart": "❤️", "red_heart": "❤️",
+		"laugh": "😄", "joy": "😂",
+		"tada": "🎉", "hooray": "🎉", "party_popper": "🎉",
+		"confused": "😕",
+		"rocket":   "🚀",
+		"eyes":     "👀",
+		"sob":      "😭",
+		"smile":    "😊", "slightly_smiling_face": "🙂",
+		"fire":            "🔥",
+		"100":             "💯",
+		"white_check_mark": "✅",
+		"x":               "❌",
+		"pray":            "🙏",
+		"clap":            "👏",
+		"wave":            "👋",
+		"ok_hand":         "👌",
+		"raised_hands":    "🙌",
+		"thinking_face":   "🤔",
+		"face_palm":       "🤦",
+		"shrug":           "🤷",
+		"wink":            "😉",
+		"sunglasses":      "😎",
+		"star":            "⭐",
+		"warning":         "⚠️",
+		"zap":             "⚡",
+		"bug":             "🐛",
+		"memo":            "📝",
+		"question":        "❓",
+		"exclamation":     "❗",
+		"construction":    "🚧",
+		"speech_balloon":  "💬",
+		"muscle":          "💪",
+		"brain":           "🧠",
+		"bulb":            "💡",
+		"link":            "🔗",
+		"lock":            "🔒",
+		"key":             "🔑",
+		"arrow_up":        "⬆️",
+		"arrow_down":      "⬇️",
+		"heavy_plus_sign": "➕",
+		"heavy_minus_sign": "➖",
+		"checkered_flag":  "🏁",
+	}
+	if ch, ok := m[name]; ok {
+		return ch
+	}
+	return ":" + name + ":"
 }
 
 // formatFileSize returns a human-readable file size string.

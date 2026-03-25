@@ -20,6 +20,10 @@ var (
 	colorFg          = lipgloss.Color("#e6edf3") // primary text
 	colorFgMuted     = lipgloss.Color("#7d8590") // secondary / muted text
 	colorFgDimmer    = lipgloss.Color("#484f58") // very dimmed (muted channels, etc.)
+
+	// ColorFgMuted and ColorFgDimmer are exported for use in sub-packages (e.g. chat/view.go).
+	ColorFgMuted  = colorFgMuted
+	ColorFgDimmer = colorFgDimmer
 	colorPrimary     = lipgloss.Color("#58a6ff") // blue accent
 	colorSuccess     = lipgloss.Color("#3fb950") // green (own messages, success)
 	colorUnread      = lipgloss.Color("#e3b341") // yellow (unread badge)

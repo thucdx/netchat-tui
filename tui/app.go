@@ -972,6 +972,10 @@ func (m *AppModel) handleWSEvent(event api.WSEvent) tea.Cmd {
 		return m.handlePostEdited(event)
 	case "channel_viewed":
 		return m.handleChannelViewed(event)
+	case "reaction_added":
+		return m.handleReactionChange(event, true)
+	case "reaction_removed":
+		return m.handleReactionChange(event, false)
 	}
 	return nil
 }
@@ -1006,6 +1010,25 @@ func (m *AppModel) handlePostEdited(event api.WSEvent) tea.Cmd {
 
 	if post.ChannelID == m.chat.ChannelID() {
 		m.chat.UpdatePost(post)
+	}
+	return nil
+}
+
+// handleReactionChange applies a reaction_added or reaction_removed WS event.
+// The reaction payload arrives as a JSON-encoded string in event.Data["reaction"].
+func (m *AppModel) handleReactionChange(event api.WSEvent, added bool) tea.Cmd {
+	reactionStr, _ := event.Data["reaction"].(string)
+	if reactionStr == "" {
+		return nil
+	}
+	var r api.Reaction
+	if err := json.Unmarshal([]byte(reactionStr), &r); err != nil || r.PostID == "" {
+		return nil
+	}
+	if added {
+		m.chat.AddReaction(r)
+	} else {
+		m.chat.RemoveReaction(r)
 	}
 	return nil
 }
