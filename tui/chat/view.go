@@ -264,13 +264,16 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Render file attachments: images as terminal art, other files as metadata lines.
 		for _, fid := range post.FileIds {
 			if imgRendered, ok := imageCache[fid]; ok && imgRendered != "" {
-				// Image rendered as terminal art — already handled by imageCache.
+				// Image rendered as terminal art — show badge on the line above the art.
 				block.WriteString("\n")
+				if fi, ok := fileInfoCache[fid]; ok {
+					block.WriteString(networkZoneBadge(fi) + "\n")
+				}
 				block.WriteString(imgRendered)
 			} else if fi, ok := fileInfoCache[fid]; ok {
-				// Non-image (or image that failed to render) — show metadata line.
+				// Non-image (or image that failed to render) — show metadata line with badge.
 				block.WriteString("\n")
-				block.WriteString("📎 " + stripANSI(fi.Name) + "  (" + formatFileSize(fi.Size) + ")")
+				block.WriteString("📎 " + stripANSI(fi.Name) + "  (" + formatFileSize(fi.Size) + ")  " + networkZoneBadge(fi))
 			}
 			// If neither cache has the file, skip silently (metadata not yet loaded).
 		}
@@ -403,6 +406,16 @@ func emojiChar(name string) string {
 		return ch
 	}
 	return ":" + name + ":"
+}
+
+// networkZoneBadge returns a small coloured badge indicating whether a file is
+// stored in the internal-network bucket ("chat") or the public bucket ("chat-public").
+// Yellow [local] = internal only; dimmed [public] = accessible from anywhere.
+func networkZoneBadge(fi api.FileInfo) string {
+	if fi.IsPublic() {
+		return styles.AttachmentPublicBadge.Render("[public]")
+	}
+	return styles.AttachmentLocalBadge.Render("[local]")
 }
 
 // formatFileSize returns a human-readable file size string.

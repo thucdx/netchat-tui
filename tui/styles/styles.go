@@ -237,6 +237,17 @@ var VisualSelectionBorder = lipgloss.NewStyle().
 // UnreadDivider is the style for the "──── unread ────" line shown between read and unread messages.
 var UnreadDivider = lipgloss.NewStyle().Foreground(lipgloss.Color("#484f58"))
 
+// AttachmentLocalBadge renders the "[local]" network-zone badge on attachments
+// that are only accessible from the internal network.
+var AttachmentLocalBadge = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("#e3b341")). // yellow — caution
+	Bold(true)
+
+// AttachmentPublicBadge renders the "[public]" network-zone badge on attachments
+// that are accessible from any network.
+var AttachmentPublicBadge = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("#484f58")) // dimmed — no concern
+
 // Utility styles
 var (
 	ErrorStyle = lipgloss.NewStyle().

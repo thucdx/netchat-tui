@@ -113,13 +113,23 @@ type PostList struct {
 
 // FileInfo holds metadata for a Mattermost file attachment.
 type FileInfo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Extension string `json:"extension"`
-	Size      int64  `json:"size"`
-	MimeType  string `json:"mime_type"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Extension      string `json:"extension"`
+	Size           int64  `json:"size"`
+	MimeType       string `json:"mime_type"`
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	// Bucketname is the S3/storage bucket the file lives in.
+	// Known values on this deployment: "chat" (internal/local network only)
+	// and "chat-public" (publicly accessible).
+	Bucketname string `json:"bucketname"`
+}
+
+// IsPublic reports whether the file is stored in the public bucket and
+// therefore accessible from outside the internal network.
+func (fi FileInfo) IsPublic() bool {
+	return fi.Bucketname == "chat-public"
 }
 
 // CustomEmoji represents a custom (server-defined) emoji on a Mattermost instance.
