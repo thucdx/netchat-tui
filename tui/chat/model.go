@@ -46,6 +46,10 @@ type Model struct {
 	// Visual mode fields (Features 3 & 4)
 	visualMode   bool // true when V visual selection is active
 	visualAnchor int  // post index where V was pressed
+
+	// expandedPosts tracks which post IDs the user has manually expanded.
+	// Posts with more than collapseThreshold rendered lines are collapsed by default.
+	expandedPosts map[string]bool
 }
 
 // NewModel creates a new chat Model with default spinner and loading state.
@@ -64,6 +68,7 @@ func NewModel(keys keymap.KeyMap, userID string) Model {
 		fileInfoCache:  make(map[string]api.FileInfo),
 		useContactName: true,
 		cursor:         -1,
+		expandedPosts:  make(map[string]bool),
 	}
 }
 
@@ -77,6 +82,7 @@ func (m *Model) LoadPosts(channelID, channelName string, postList api.PostList, 
 	m.loadingMore = false
 	m.page = 0
 	m.err = nil
+	m.expandedPosts = make(map[string]bool)
 
 	// Collect posts from the map.
 	posts := make([]api.Post, 0, len(postList.Posts))
@@ -103,7 +109,7 @@ func (m *Model) LoadPosts(channelID, channelName string, postList api.PostList, 
 
 	// Render posts content into the viewport.
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -127,7 +133,7 @@ func (m *Model) AppendPost(post api.Post) {
 	}
 
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 	m.viewport.SetContent(content)
 
 	if atBottom {
@@ -143,7 +149,7 @@ func (m *Model) UpdatePost(post api.Post) {
 			atBottom := m.viewport.AtBottom()
 			m.posts[i] = post
 			vs, ve := m.VisualSelection()
-			content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+			content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 			m.viewport.SetContent(content)
 			if atBottom {
 				m.viewport.GotoBottom()
@@ -212,11 +218,11 @@ func (m *Model) PrependPosts(postList api.PostList, page int) {
 	}
 
 	// Measure how many lines the prepended posts add.
-	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, -1, 0, -1, -1)
+	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, -1, 0, -1, -1, nil)
 	addedLines := strings.Count(newContent, "\n") + 1
 
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 	m.viewport.SetContent(content)
 
 	// Re-anchor: keep the user's reading position stable.
@@ -244,7 +250,7 @@ func (m *Model) SetSize(width, height int) {
 
 	if len(m.posts) > 0 {
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+		content := RenderPosts(m.posts, m.userCache, m.userID, width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -262,7 +268,7 @@ func (m *Model) SetUseContactName(useContact bool) {
 	if len(m.posts) > 0 {
 		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -282,7 +288,7 @@ func (m *Model) SetFileInfoCache(cache map[string]api.FileInfo) {
 	if len(m.posts) > 0 {
 		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -303,7 +309,7 @@ func (m Model) SetImageCache(cache map[string]string) Model {
 	if len(m.posts) > 0 {
 		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -441,6 +447,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.EnterVisualMode()
 			}
 			m.refreshContent()
+		case key.Matches(msg, m.keys.ExpandCollapse):
+			m.pendingG = false
+			if m.cursor >= 0 && m.cursor < len(m.posts) {
+				id := m.posts[m.cursor].ID
+				if m.expandedPosts[id] {
+					delete(m.expandedPosts, id)
+				} else {
+					m.expandedPosts[id] = true
+				}
+				m.refreshContent()
+			}
 		}
 
 		// After scrolling, check if we're at the top for pagination.
@@ -774,7 +791,7 @@ func (m *Model) refreshContent() {
 		return
 	}
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
 	m.viewport.SetContent(content)
 }
 

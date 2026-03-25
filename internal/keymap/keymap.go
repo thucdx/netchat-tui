@@ -50,8 +50,9 @@ type KeyMap struct {
 	JumpToUnread          key.Binding // r — jump to first unread post
 
 	// Visual mode (Features 3 & 4)
-	VisualMode key.Binding // V — enter/exit visual selection mode
-	Yank       key.Binding // y — copy selected messages to clipboard
+	VisualMode    key.Binding // V — enter/exit visual selection mode
+	Yank          key.Binding // y — copy selected messages to clipboard
+	ExpandCollapse key.Binding // z — expand/collapse a long message
 
 	// App
 	// Quit must only be matched when the sidebar is focused.
@@ -164,6 +165,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("y"),
 			key.WithHelp("y", "yank/copy"),
 		),
+		ExpandCollapse: key.NewBinding(
+			key.WithKeys("z"),
+			key.WithHelp("z", "expand/collapse"),
+		),
 	}
 }
 
@@ -192,7 +197,7 @@ func (k KeyMap) HelpSections() []HelpSection {
 		},
 		{
 			Title:    "Chat — Copy",
-			Bindings: []key.Binding{k.VisualMode, k.Yank},
+			Bindings: []key.Binding{k.VisualMode, k.Yank, k.ExpandCollapse},
 		},
 		{
 			Title:    "Message Input",

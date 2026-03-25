@@ -83,7 +83,12 @@ func newMarkdownRenderer(width int) func(string) string {
 // lastViewedAt is the Unix-ms timestamp of the channel member's last read; posts
 // with CreateAt > lastViewedAt after the first such post get an unread divider.
 // visualStart and visualEnd define the inclusive range of the visual selection (-1,-1 = none).
-func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, fileInfoCache map[string]api.FileInfo, useContactName bool, cursor int, lastViewedAt int64, visualStart int, visualEnd int) string {
+// collapseThreshold is the number of rendered lines above which a message is
+// auto-collapsed. collapsePreviewLines is how many lines are shown in collapsed state.
+const collapseThreshold = 10
+const collapsePreviewLines = 5
+
+func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, fileInfoCache map[string]api.FileInfo, useContactName bool, cursor int, lastViewedAt int64, visualStart int, visualEnd int, expandedPosts map[string]bool) string {
 	if len(posts) == 0 {
 		return ""
 	}
@@ -175,6 +180,17 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Render content with glamour (handles markdown, code blocks, images, etc.).
 		// Strip raw ANSI from the source first so glamour sees clean markdown.
 		rendered := renderMD(stripANSI(post.Message))
+
+		// Auto-collapse messages that render beyond the threshold, unless the
+		// user has explicitly expanded this post.
+		if !expandedPosts[post.ID] {
+			lines := strings.Split(rendered, "\n")
+			if len(lines) > collapseThreshold {
+				rendered = strings.Join(lines[:collapsePreviewLines], "\n") +
+					"\n" + styles.SubtleStyle.Render("  … z to expand")
+			}
+		}
+
 		block.WriteString(rendered)
 
 		// Show "(edited)" if applicable.

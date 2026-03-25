@@ -26,7 +26,15 @@ func NewLayout(width, height, sidebarWidth int) Layout {
 		chatWidth = 1
 	}
 
-	chatHeight := height - styles.InputHeight
+	// Input box scales with terminal height:
+	// < 25 rows  → 1 text line (3 total: border-top + text + border-bottom)
+	// ≥ 25 rows  → 3 text lines (5 total), same as before
+	inputHeight := styles.InputHeight // 5
+	if height < 25 {
+		inputHeight = 3
+	}
+
+	chatHeight := height - inputHeight
 	if chatHeight < 1 {
 		chatHeight = 1
 	}
@@ -36,7 +44,7 @@ func NewLayout(width, height, sidebarWidth int) Layout {
 		TotalHeight:  height,
 		SidebarWidth: sidebarWidth,
 		ChatWidth:    chatWidth,
-		InputHeight:  styles.InputHeight,
+		InputHeight:  inputHeight,
 		ChatHeight:   chatHeight,
 	}
 }
