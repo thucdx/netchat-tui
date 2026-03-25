@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	_ "image/gif"  // register GIF decoder
-	_ "image/jpeg" // register JPEG decoder
-	_ "image/png"  // register PNG decoder
+	_ "image/gif"                   // register GIF decoder
+	_ "image/jpeg"                  // register JPEG decoder
+	_ "image/png"                   // register PNG decoder
 	"strings"
+
+	_ "golang.org/x/image/webp"    // register WebP decoder (common for Mattermost custom emoji)
 )
 
 // InlineImageCols is the width (terminal cells) for inline thumbnail renders.
@@ -19,10 +21,12 @@ const InlineImageCols = 30
 const InlineImageRows = 8
 
 // InlineEmojiCols is the width (terminal cells) for inline custom emoji renders.
-const InlineEmojiCols = 3
+// 4 cells keeps it roughly the same visual footprint as two Unicode emoji side-by-side.
+const InlineEmojiCols = 4
 
 // InlineEmojiRows is the height (terminal rows) for inline custom emoji renders.
-const InlineEmojiRows = 1
+// 2 rows = 4 pixel rows; enough detail to recognise a simple emoji shape.
+const InlineEmojiRows = 2
 
 // RenderEmojiHalfBlock renders a custom emoji image as a tiny inline half-block
 // thumbnail (InlineEmojiCols × InlineEmojiRows cells).  The trailing newline is

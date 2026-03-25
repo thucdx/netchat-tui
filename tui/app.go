@@ -1247,6 +1247,8 @@ func (m AppModel) cmdFetchCustomEmojiImages(catalog map[string]api.CustomEmoji) 
 			art := chat.RenderEmojiHalfBlock(data)
 			if art != "" {
 				rendered[name] = art
+			} else {
+				log.Printf("cmdFetchCustomEmojiImages: %s: decoded %d bytes but got empty art (unsupported format?)", name, len(data))
 			}
 		}
 		return messages.CustomEmojiImagesReadyMsg{Rendered: rendered}
