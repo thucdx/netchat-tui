@@ -36,6 +36,9 @@ A keyboard-driven terminal UI client for **netchat.viettel.vn** (Mattermost v4),
 - **Vim-style navigation** — `j/k`, `gg`, `G`, `Ctrl+U/D`, `Ctrl+B/F`, count prefixes (`5j`, `5gg`) throughout
 - **Visual selection & copy** — `V` enters visual mode; `j`/`k` extends the selection; `y` copies to the clipboard
 - **Preview channel** — `p` loads a channel in the chat pane without leaving the sidebar
+- **Auto-collapse long messages** — messages longer than 10 lines are collapsed automatically; press `z` on the cursor message to expand or collapse
+- **Adaptive input box** — the message input shrinks to one line on small terminals (< 25 rows) and expands automatically when you resize the window
+- **Keybinding help overlay** — press `?` from anywhere to show a full hotkey reference; dismiss with `?` or `Esc`
 
 ---
 
@@ -206,7 +209,7 @@ Press `y` or `Enter` to confirm, any other key to cancel.
 
 > Scrolling or moving the cursor to the **top of the loaded buffer** automatically pages in older messages.
 
-### 5. Copy messages
+### 5. Copy & collapse messages
 
 | Key | Action |
 |-----|--------|
@@ -214,6 +217,7 @@ Press `y` or `Enter` to confirm, any other key to cancel.
 | `j` / `k` | Extend selection down / up |
 | `y` | Copy selected messages to clipboard; exit visual mode |
 | `Esc` | Cancel visual mode without copying |
+| `z` | Expand or collapse the cursor message |
 
 **Quick copy a single message:** navigate to it with `j`/`k`, press `V`, then `y`.
 
@@ -255,10 +259,12 @@ Images are displayed as **inline thumbnail art** in the chat. Press `o` to open 
 
 | Key | Action |
 |-----|--------|
-| `?` | Show keybinding help overlay |
+| `?` | Show / hide keybinding help overlay (also `Esc` to close) |
 | `n` | Toggle display name (contact name ↔ username) |
 | `q` | Quit (sidebar focused) |
 | `Ctrl+C` | Quit from anywhere |
+
+> The sidebar footer always shows a `? help` reminder. When the list overflows it shares the scroll-indicator line so it takes no extra space.
 
 ---
 
