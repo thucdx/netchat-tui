@@ -265,7 +265,7 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Reactions row: group by emoji, sorted by count desc.
 		if len(post.Metadata.Reactions) > 0 {
 			block.WriteString("\n")
-			block.WriteString(renderReactions(post.Metadata.Reactions))
+			block.WriteString(renderReactions(post.Metadata.Reactions, customEmojiCache))
 		}
 
 		// Apply cursor border to the whole block when this post is selected.
@@ -298,7 +298,7 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 // renderReactions formats a slice of reactions as a compact grouped row.
 // Reactions are grouped by emoji, sorted by count descending, then name ascending.
 // Example output: "👍 3  ❤️ 2  😂 1"
-func renderReactions(reactions []api.Reaction) string {
+func renderReactions(reactions []api.Reaction, customEmojiCache map[string]string) string {
 	counts := make(map[string]int, len(reactions))
 	for _, r := range reactions {
 		counts[r.EmojiName]++
@@ -322,6 +322,12 @@ func renderReactions(reactions []api.Reaction) string {
 	parts := make([]string, 0, len(entries))
 	for _, e := range entries {
 		ch := emojiChar(e.name)
+		// If not a known standard emoji, try the custom emoji art cache.
+		if ch == ":"+e.name+":" {
+			if art, ok := customEmojiCache[e.name]; ok && art != "" {
+				ch = art
+			}
+		}
 		if e.count > 1 {
 			parts = append(parts, ch+" "+fmt.Sprintf("%d", e.count))
 		} else {
