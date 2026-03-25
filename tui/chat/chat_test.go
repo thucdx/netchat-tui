@@ -158,7 +158,7 @@ func TestRenderPosts_MessageGrouping(t *testing.T) {
 		"alice": {ID: "alice", Username: "alice"},
 	}
 
-	rendered := RenderPosts(posts, userCache, "", 0, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := RenderPosts(posts, userCache, "", 0, nil, nil, false, -1, 0, -1, -1, nil, nil)
 
 	// Strip ANSI so we can count occurrences in plain text.
 	plain := stripANSI(rendered)
@@ -178,7 +178,7 @@ func TestRenderPosts_SystemMessage(t *testing.T) {
 		{ID: "1", UserID: "system", Message: "Alice joined the channel", CreateAt: 100, Type: "system_join_channel"},
 	}
 
-	rendered := RenderPosts(posts, nil, "", 0, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := RenderPosts(posts, nil, "", 0, nil, nil, false, -1, 0, -1, -1, nil, nil)
 
 	// System message content should appear in the rendered output
 	if !strings.Contains(rendered, posts[0].Message) && !strings.Contains(rendered, "system") {
@@ -199,7 +199,7 @@ func TestRenderPosts_EditedIndicator(t *testing.T) {
 		{ID: "1", UserID: "u1", Message: "original text", CreateAt: 100, EditAt: 200},
 	}
 
-	rendered := RenderPosts(posts, nil, "", 0, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := RenderPosts(posts, nil, "", 0, nil, nil, false, -1, 0, -1, -1, nil, nil)
 	plain := stripANSI(rendered)
 
 	if !strings.Contains(plain, "(edited)") {
@@ -217,7 +217,7 @@ func TestRenderPosts_ANSIStripped(t *testing.T) {
 		{ID: "1", UserID: "u1", Message: ansiMsg, CreateAt: 100},
 	}
 
-	rendered := RenderPosts(posts, nil, "", 0, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := RenderPosts(posts, nil, "", 0, nil, nil, false, -1, 0, -1, -1, nil, nil)
 	plain := stripANSI(rendered)
 
 	// The raw ANSI clear-screen sequence \x1b[2J must not appear in the plain output.
@@ -879,7 +879,7 @@ func TestUnreadDivider_Before(t *testing.T) {
 	}
 
 	// lastViewedAt = 300, so posts at 100 and 200 are read; 400 and 500 are unread.
-	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 300, -1, -1, nil)
+	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 300, -1, -1, nil, nil)
 	plain := stripANSI(rendered)
 
 	if !strings.Contains(plain, "unread") {
@@ -905,7 +905,7 @@ func TestUnreadDivider_NoInsertWhenNoLastViewedAt(t *testing.T) {
 	}
 
 	// lastViewedAt = 0 (default) — no divider should be inserted.
-	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 0, -1, -1, nil, nil)
 	plain := stripANSI(rendered)
 
 	// Should not contain the "unread" text marker.
@@ -927,7 +927,7 @@ func TestUnreadDivider_OnlyOnce(t *testing.T) {
 	}
 
 	// lastViewedAt = 150 → posts at 200+ are unread.
-	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 150, -1, -1, nil)
+	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 150, -1, -1, nil, nil)
 	plain := stripANSI(rendered)
 
 	// Count occurrences of the unread divider marker.
@@ -948,7 +948,7 @@ func TestUnreadDivider_AllRead(t *testing.T) {
 	}
 
 	// lastViewedAt = 300 (after all posts) — no unread divider.
-	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 300, -1, -1, nil)
+	rendered := RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 300, -1, -1, nil, nil)
 	plain := stripANSI(rendered)
 
 	if strings.Contains(plain, "unread") {

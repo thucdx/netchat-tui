@@ -16,6 +16,25 @@ import (
 // ansiEscape matches ANSI terminal escape sequences.
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[mABCDEFGHJKSTfhil]`)
 
+// emojiShortcode matches :name: patterns (custom emoji shortcodes).
+var emojiShortcode = regexp.MustCompile(`:([a-z0-9_+\-]+):`)
+
+// substituteCustomEmoji replaces :name: patterns in s with rendered terminal art
+// from cache when available.  Patterns already converted by glamour (standard
+// emoji) will not appear as :name: in the input, so only custom ones remain.
+func substituteCustomEmoji(s string, cache map[string]string) string {
+	if len(cache) == 0 {
+		return s
+	}
+	return emojiShortcode.ReplaceAllStringFunc(s, func(match string) string {
+		name := match[1 : len(match)-1]
+		if art, ok := cache[name]; ok && art != "" {
+			return art
+		}
+		return match
+	})
+}
+
 // stripANSI removes ANSI escape sequences from s.
 func stripANSI(s string) string {
 	return ansiEscape.ReplaceAllString(s, "")
@@ -89,7 +108,7 @@ func newMarkdownRenderer(width int) func(string) string {
 const collapseThreshold = 10
 const collapsePreviewLines = 5
 
-func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, fileInfoCache map[string]api.FileInfo, useContactName bool, cursor int, lastViewedAt int64, visualStart int, visualEnd int, expandedPosts map[string]bool) string {
+func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID string, width int, imageCache map[string]string, fileInfoCache map[string]api.FileInfo, useContactName bool, cursor int, lastViewedAt int64, visualStart int, visualEnd int, expandedPosts map[string]bool, customEmojiCache map[string]string) string {
 	if len(posts) == 0 {
 		return ""
 	}
@@ -208,6 +227,9 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 		// Render content with glamour (handles markdown, code blocks, images, etc.).
 		// Strip raw ANSI from the source first so glamour sees clean markdown.
 		rendered := renderMD(stripANSI(post.Message))
+
+		// Substitute custom emoji :name: patterns with rendered terminal art.
+		rendered = substituteCustomEmoji(rendered, customEmojiCache)
 
 		// Auto-collapse messages that render beyond the threshold, unless the
 		// user has explicitly expanded this post.

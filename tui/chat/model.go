@@ -50,6 +50,10 @@ type Model struct {
 	// expandedPosts tracks which post IDs the user has manually expanded.
 	// Posts with more than collapseThreshold rendered lines are collapsed by default.
 	expandedPosts map[string]bool
+
+	// customEmojiCache holds rendered terminal-art strings keyed by emoji name.
+	// Populated asynchronously when custom emoji images are downloaded.
+	customEmojiCache map[string]string
 }
 
 // NewModel creates a new chat Model with default spinner and loading state.
@@ -109,7 +113,7 @@ func (m *Model) LoadPosts(channelID, channelName string, postList api.PostList, 
 
 	// Render posts content into the viewport.
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -133,7 +137,7 @@ func (m *Model) AppendPost(post api.Post) {
 	}
 
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 	m.viewport.SetContent(content)
 
 	if atBottom {
@@ -149,7 +153,7 @@ func (m *Model) UpdatePost(post api.Post) {
 			atBottom := m.viewport.AtBottom()
 			m.posts[i] = post
 			vs, ve := m.VisualSelection()
-			content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+			content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 			m.viewport.SetContent(content)
 			if atBottom {
 				m.viewport.GotoBottom()
@@ -218,11 +222,11 @@ func (m *Model) PrependPosts(postList api.PostList, page int) {
 	}
 
 	// Measure how many lines the prepended posts add.
-	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, -1, 0, -1, -1, nil)
+	newContent := RenderPosts(newPosts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, -1, 0, -1, -1, nil, m.customEmojiCache)
 	addedLines := strings.Count(newContent, "\n") + 1
 
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 	m.viewport.SetContent(content)
 
 	// Re-anchor: keep the user's reading position stable.
@@ -250,7 +254,7 @@ func (m *Model) SetSize(width, height int) {
 
 	if len(m.posts) > 0 {
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+		content := RenderPosts(m.posts, m.userCache, m.userID, width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -268,7 +272,7 @@ func (m *Model) SetUseContactName(useContact bool) {
 	if len(m.posts) > 0 {
 		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -288,7 +292,7 @@ func (m *Model) SetFileInfoCache(cache map[string]api.FileInfo) {
 	if len(m.posts) > 0 {
 		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -309,7 +313,28 @@ func (m Model) SetImageCache(cache map[string]string) Model {
 	if len(m.posts) > 0 {
 		atBottom := m.viewport.AtBottom()
 		vs, ve := m.VisualSelection()
-		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
+		m.viewport.SetContent(content)
+		if atBottom {
+			m.viewport.GotoBottom()
+		}
+	}
+	return m
+}
+
+// SetCustomEmojiCache merges new rendered emoji art entries and re-renders the viewport.
+// Call this when custom emoji images have been downloaded asynchronously.
+func (m Model) SetCustomEmojiCache(cache map[string]string) Model {
+	if m.customEmojiCache == nil {
+		m.customEmojiCache = make(map[string]string)
+	}
+	for k, v := range cache {
+		m.customEmojiCache[k] = v
+	}
+	if len(m.posts) > 0 {
+		atBottom := m.viewport.AtBottom()
+		vs, ve := m.VisualSelection()
+		content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 		m.viewport.SetContent(content)
 		if atBottom {
 			m.viewport.GotoBottom()
@@ -829,7 +854,7 @@ func (m *Model) refreshContent() {
 		return
 	}
 	vs, ve := m.VisualSelection()
-	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts)
+	content := RenderPosts(m.posts, m.userCache, m.userID, m.width, m.imageCache, m.fileInfoCache, m.useContactName, m.cursor, m.lastViewedAt, vs, ve, m.expandedPosts, m.customEmojiCache)
 	m.viewport.SetContent(content)
 }
 

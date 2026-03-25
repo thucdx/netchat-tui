@@ -18,6 +18,21 @@ const InlineImageCols = 30
 // Each row represents 2 pixels via the half-block character ▄.
 const InlineImageRows = 8
 
+// InlineEmojiCols is the width (terminal cells) for inline custom emoji renders.
+const InlineEmojiCols = 3
+
+// InlineEmojiRows is the height (terminal rows) for inline custom emoji renders.
+const InlineEmojiRows = 1
+
+// RenderEmojiHalfBlock renders a custom emoji image as a tiny inline half-block
+// thumbnail (InlineEmojiCols × InlineEmojiRows cells).  The trailing newline is
+// stripped so the art can be inlined into a text flow.
+// Returns an empty string when the data cannot be decoded.
+func RenderEmojiHalfBlock(data []byte) string {
+	art := RenderImageHalfBlock(data, InlineEmojiCols, InlineEmojiRows)
+	return strings.TrimRight(art, "\n")
+}
+
 // RenderImageHalfBlock decodes raw image bytes (PNG/JPEG/GIF) and renders them
 // as terminal half-block (▄) pixel art using 24-bit true-color ANSI sequences.
 //

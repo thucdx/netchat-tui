@@ -81,3 +81,9 @@ type OpenFileMsg struct {
 type YankMsg struct {
 	Text string
 }
+
+// CustomEmojiImagesReadyMsg carries rendered terminal-art strings for custom
+// emoji, keyed by emoji name.  Dispatched when background emoji downloads complete.
+type CustomEmojiImagesReadyMsg struct {
+	Rendered map[string]string // emoji name → rendered half-block art
+}

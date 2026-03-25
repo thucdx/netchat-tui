@@ -122,6 +122,15 @@ type FileInfo struct {
 	Height    int    `json:"height"`
 }
 
+// CustomEmoji represents a custom (server-defined) emoji on a Mattermost instance.
+type CustomEmoji struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatorID string `json:"creator_id"`
+	CreateAt  int64  `json:"create_at"`
+	DeleteAt  int64  `json:"delete_at"`
+}
+
 // Preference represents a single user preference entry.
 type Preference struct {
 	UserID   string `json:"user_id"`

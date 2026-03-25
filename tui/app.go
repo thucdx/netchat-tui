@@ -52,6 +52,11 @@ type directChannelReadyMsg struct {
 // channelJoinedMsg carries the channel the user just joined.
 type channelJoinedMsg struct{ channel api.Channel }
 
+// customEmojiCatalogReadyMsg carries the full custom emoji catalog after it has been fetched.
+type customEmojiCatalogReadyMsg struct {
+	catalog map[string]api.CustomEmoji
+}
+
 type postsReadyMsg struct {
 	channelID   string
 	channelName string
@@ -97,7 +102,9 @@ type AppModel struct {
 	wsCancel     context.CancelFunc // cancels WS reconnect loop
 	userID       string
 	userCache    map[string]api.User // all known users (DM partners + post authors)
-	imageCache map[string]string // inline half-block renders keyed by file ID
+	imageCache          map[string]string          // inline half-block renders keyed by file ID
+	customEmojiByName   map[string]api.CustomEmoji // custom emoji catalog keyed by name
+	customEmojiArtCache map[string]string          // rendered terminal art keyed by emoji name
 	ready        bool
 	teams        []api.Team  // all teams the user belongs to (for channel search)
 	sidebarWidth int  // total sidebar width including border; resizable via drag
@@ -153,7 +160,7 @@ func (m AppModel) Init() tea.Cmd {
 		m.input.Init(), // starts textarea blink cursor
 	}
 	if m.api != nil {
-		cmds = append(cmds, m.cmdLoadAllChannels(), m.cmdStartWS())
+		cmds = append(cmds, m.cmdLoadAllChannels(), m.cmdStartWS(), m.cmdLoadCustomEmoji())
 	}
 	return tea.Batch(cmds...)
 }
@@ -402,6 +409,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.FileInfos) > 0 {
 			m.chat.SetFileInfoCache(msg.FileInfos)
 		}
+		return m, nil
+
+	case customEmojiCatalogReadyMsg:
+		m.customEmojiByName = msg.catalog
+		return m, m.cmdFetchCustomEmojiImages(msg.catalog)
+
+	case messages.CustomEmojiImagesReadyMsg:
+		if m.customEmojiArtCache == nil {
+			m.customEmojiArtCache = make(map[string]string)
+		}
+		for k, v := range msg.Rendered {
+			m.customEmojiArtCache[k] = v
+		}
+		m.chat = m.chat.SetCustomEmojiCache(m.customEmojiArtCache)
 		return m, nil
 
 	// ── Sending messages ──────────────────────────────────────────────────────
@@ -1178,4 +1199,56 @@ func unmarshalPostFromEvent(event api.WSEvent) (api.Post, bool) {
 		return api.Post{}, false
 	}
 	return post, true
+}
+
+// cmdLoadCustomEmoji fetches all custom emoji names from the server (paginated).
+// On success it dispatches customEmojiCatalogReadyMsg; errors are logged and ignored.
+func (m AppModel) cmdLoadCustomEmoji() tea.Cmd {
+	if m.api == nil {
+		return nil
+	}
+	apiClient := m.api
+	return func() tea.Msg {
+		catalog := make(map[string]api.CustomEmoji)
+		for page := 0; ; page++ {
+			emojis, err := apiClient.GetCustomEmojiList(page, 200)
+			if err != nil {
+				log.Printf("cmdLoadCustomEmoji: page %d: %v", page, err)
+				break
+			}
+			for _, e := range emojis {
+				if e.DeleteAt == 0 {
+					catalog[e.Name] = e
+				}
+			}
+			if len(emojis) < 200 {
+				break
+			}
+		}
+		return customEmojiCatalogReadyMsg{catalog: catalog}
+	}
+}
+
+// cmdFetchCustomEmojiImages downloads images for all emojis in catalog and renders
+// them as tiny half-block terminal art.  Dispatches CustomEmojiImagesReadyMsg when done.
+func (m AppModel) cmdFetchCustomEmojiImages(catalog map[string]api.CustomEmoji) tea.Cmd {
+	if len(catalog) == 0 || m.api == nil {
+		return nil
+	}
+	apiClient := m.api
+	return func() tea.Msg {
+		rendered := make(map[string]string, len(catalog))
+		for name, e := range catalog {
+			data, err := apiClient.GetCustomEmojiImage(e.ID)
+			if err != nil {
+				log.Printf("cmdFetchCustomEmojiImages: %s: %v", name, err)
+				continue
+			}
+			art := chat.RenderEmojiHalfBlock(data)
+			if art != "" {
+				rendered[name] = art
+			}
+		}
+		return messages.CustomEmojiImagesReadyMsg{Rendered: rendered}
+	}
 }

@@ -130,7 +130,7 @@ func TestSecurity_ANSIStrippedFromMessages(t *testing.T) {
 		"u1": {ID: "u1", Username: "alice"},
 	}
 
-	rendered := chat.RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := chat.RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 0, -1, -1, nil, nil)
 
 	// glamour adds its own legitimate ANSI codes; strip those and check plain text.
 	plain := secStripANSI(rendered)
@@ -155,7 +155,7 @@ func TestSecurity_ANSIStrippedFromSystemMessages(t *testing.T) {
 		},
 	}
 
-	rendered := chat.RenderPosts(posts, nil, "", 80, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := chat.RenderPosts(posts, nil, "", 80, nil, nil, false, -1, 0, -1, -1, nil, nil)
 
 	plain := secStripANSI(rendered)
 	if !strings.Contains(plain, "System joined") {
@@ -178,7 +178,7 @@ func TestSecurity_ANSICursorMovement(t *testing.T) {
 		"u1": {ID: "u1", Username: "bob"},
 	}
 
-	rendered := chat.RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 0, -1, -1, nil)
+	rendered := chat.RenderPosts(posts, userCache, "", 80, nil, nil, false, -1, 0, -1, -1, nil, nil)
 
 	// glamour adds its own ANSI; strip those and verify the cursor-movement code
 	// (\x1b[2A) from the message source is not present in the plain text.
