@@ -102,7 +102,8 @@ type AppModel struct {
 	wsCancel     context.CancelFunc // cancels WS reconnect loop
 	userID       string
 	userCache    map[string]api.User // all known users (DM partners + post authors)
-	imageCache          map[string]string          // inline half-block renders keyed by file ID
+	imageCache          map[string]string          // inline image renders keyed by file ID
+	kittyImageIDs       []uint32                   // Kitty GPU image IDs for cleanup on channel switch
 	customEmojiByName   map[string]api.CustomEmoji // custom emoji catalog keyed by name
 	customEmojiArtCache map[string]string          // rendered terminal art keyed by emoji name
 	ready        bool
@@ -254,10 +255,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
-			// Esc from input returns to chat (not sidebar) so the flow
-			// i → type → Esc lands back in the chat dialogue.
+			// Esc from input returns to sidebar.
 			case msg.Type == tea.KeyEsc && m.focus == FocusInput:
-				m.focus = FocusChat
+				m.focus = FocusSidebar
 				m.syncFocus()
 				return m, nil
 
@@ -349,6 +349,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── Channel selection ─────────────────────────────────────────────────────
 
 	case messages.ChannelSelectedMsg:
+		// Clean up Kitty GPU images from the previous channel.
+		if len(m.kittyImageIDs) > 0 {
+			chat.DeleteKittyImages(m.kittyImageIDs)
+			m.kittyImageIDs = nil
+		}
+		m.imageCache = nil
 		// Update input so sends target the new channel.
 		m.input.SetChannelID(msg.ChannelID)
 		// Find channel name from sidebar for the chat header.
@@ -405,6 +411,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for k, v := range msg.Images {
 			m.imageCache[k] = v
 		}
+		m.kittyImageIDs = append(m.kittyImageIDs, msg.KittyIDs...)
 		m.chat = m.chat.SetImageCache(m.imageCache)
 		if len(msg.FileInfos) > 0 {
 			m.chat.SetFileInfoCache(msg.FileInfos)
@@ -886,8 +893,10 @@ func (m AppModel) cmdFetchMorePosts(channelID string, page int) tea.Cmd {
 	}
 }
 
-// cmdFetchImages downloads thumbnails for the given file IDs and renders small
-// inline half-block previews.
+// cmdFetchImages downloads thumbnails for the given file IDs and renders inline
+// previews.  When the terminal supports the Kitty Graphics Protocol, images are
+// uploaded to the terminal GPU and U+10EEEE placeholder strings are returned.
+// Otherwise falls back to iTerm2 or half-block rendering.
 func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	if len(fileIDs) == 0 {
 		return nil
@@ -896,6 +905,9 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 	return func() tea.Msg {
 		rendered := make(map[string]string, len(fileIDs))
 		fileInfos := make(map[string]api.FileInfo, len(fileIDs))
+		var kittyIDs []uint32
+		useKitty := chat.IsKittyCapable()
+
 		for _, fid := range fileIDs {
 			info, err := apiClient.GetFileInfo(fid)
 			if err != nil {
@@ -906,17 +918,36 @@ func (m AppModel) cmdFetchImages(fileIDs []string) tea.Cmd {
 			if !isImageMIME(info.MimeType) {
 				continue
 			}
-			data, err := apiClient.DownloadFileThumbnail(fid)
-			if err != nil {
+			// For Kitty, try the higher-resolution preview; fall back to thumbnail.
+			var data []byte
+			if useKitty {
+				data, err = apiClient.DownloadFilePreview(fid)
+				if err != nil || len(data) == 0 {
+					data, err = apiClient.DownloadFileThumbnail(fid)
+				}
+			} else {
+				data, err = apiClient.DownloadFileThumbnail(fid)
+			}
+			if err != nil || len(data) == 0 {
 				continue
 			}
-			// Inline thumbnail: small half-block render.
-			r := chat.RenderImageHalfBlock(data, chat.InlineImageCols, chat.InlineImageRows)
-			if r != "" {
-				rendered[fid] = r
+
+			if useKitty {
+				// Kitty path: upload to terminal GPU, return placeholder text.
+				imgID, placementID, cols, rows := chat.UploadKittyImage(data, chat.InlineImageCols, chat.InlineImageRows)
+				if imgID != 0 {
+					rendered[fid] = chat.BuildKittyPlaceholder(imgID, placementID, cols, rows)
+					kittyIDs = append(kittyIDs, imgID)
+				}
+			} else {
+				// Fallback: iTerm2 or half-block.
+				r := chat.RenderImageProtocol(data, chat.InlineImageCols, chat.InlineImageRows)
+				if r != "" {
+					rendered[fid] = r
+				}
 			}
 		}
-		return messages.ImagesReadyMsg{Images: rendered, FileInfos: fileInfos}
+		return messages.ImagesReadyMsg{Images: rendered, FileInfos: fileInfos, KittyIDs: kittyIDs}
 	}
 }
 

@@ -38,10 +38,14 @@ type WSEventMsg struct{ Event api.WSEvent }
 // ImagesReadyMsg carries rendered terminal-image strings keyed by file ID.
 // It is dispatched when background image downloads complete.
 type ImagesReadyMsg struct {
-	// Images maps Mattermost file IDs to small inline half-block renders.
+	// Images maps Mattermost file IDs to rendered inline image strings.
+	// For Kitty terminals these are U+10EEEE placeholder grids; otherwise half-block art.
 	Images map[string]string
 	// FileInfos maps Mattermost file IDs to their metadata.
 	FileInfos map[string]api.FileInfo
+	// KittyIDs holds Kitty Graphics Protocol image IDs that were uploaded to the
+	// terminal GPU.  The app tracks these so it can delete them on channel switch.
+	KittyIDs []uint32
 }
 
 // TriggerSearchMsg is emitted by the sidebar when the search query reaches

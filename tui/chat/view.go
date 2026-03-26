@@ -261,21 +261,63 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			block.WriteString(" " + styles.MessageEdited.Render("(edited)"))
 		}
 
-		// Render file attachments: images as terminal art, other files as metadata lines.
+		// Render file attachments.
+		// Badge text goes inside the Lipgloss border (safe plain text).
+		// All image sequences — Kitty Unicode placeholders AND APC escapes —
+		// go into imgBuf and are appended AFTER the border.  Lipgloss's reflow
+		// engine corrupts both: APC bytes get ANSI injected, and combining
+		// diacritics on U+10EEEE placeholders get mangled or re-ordered.
+		type imgEntry struct {
+			rendered string
+			badge    string
+		}
+		var imgs []imgEntry
+		var imgBuf strings.Builder
 		for _, fid := range post.FileIds {
 			if imgRendered, ok := imageCache[fid]; ok && imgRendered != "" {
-				// Image rendered as terminal art — show badge on the line above the art.
-				block.WriteString("\n")
+				badge := ""
 				if fi, ok := fileInfoCache[fid]; ok {
-					block.WriteString(networkZoneBadge(fi) + "\n")
+					badge = networkZoneBadge(fi)
 				}
-				block.WriteString(imgRendered)
+				imgs = append(imgs, imgEntry{rendered: imgRendered, badge: badge})
 			} else if fi, ok := fileInfoCache[fid]; ok {
-				// Non-image (or image that failed to render) — show metadata line with badge.
+				// Non-image (or image that failed to render) — metadata only.
 				block.WriteString("\n")
 				block.WriteString("📎 " + stripANSI(fi.Name) + "  (" + formatFileSize(fi.Size) + ")  " + networkZoneBadge(fi))
 			}
 			// If neither cache has the file, skip silently (metadata not yet loaded).
+		}
+
+		// Lay out images: show side-by-side when the chat pane is wide enough.
+		// Each image slot occupies InlineImageCols cells.  Use 1 cell of gap
+		// between images.
+		const imgGap = 1
+		perRow := max(1, (width+imgGap)/(InlineImageCols+imgGap))
+		for i := 0; i < len(imgs); i += perRow {
+			batch := imgs[i:min(i+perRow, len(imgs))]
+			// Write badges (plain text) inside the Lipgloss-rendered border.
+			for _, img := range batch {
+				if img.badge != "" {
+					block.WriteString("\n" + img.badge)
+				}
+			}
+			// Emit image placeholders outside the border (imgBuf).
+			// Indent every image line by 2 spaces (1 border char + 1 padding)
+			// so images align vertically with the text body inside the border.
+			var imgRow string
+			if len(batch) == 1 {
+				imgRow = batch[0].rendered
+			} else {
+				// Join images side-by-side.  U+10EEEE has display width 1 and
+				// combining diacritics have width 0, so Lipgloss measures and
+				// preserves the placeholder grids correctly.
+				strs := make([]string, len(batch))
+				for j, img := range batch {
+					strs[j] = img.rendered
+				}
+				imgRow = lipgloss.JoinHorizontal(lipgloss.Top, strs...)
+			}
+			imgBuf.WriteString("\n" + indentLines(imgRow, "  "))
 		}
 
 		// Reactions row: group by emoji, sorted by count desc.
@@ -304,6 +346,11 @@ func RenderPosts(posts []api.Post, userCache map[string]api.User, myUserID strin
 			blockStr = userBorder.Render(blockStr)
 		}
 		sb.WriteString(blockStr)
+		// Image sequences are appended after the Lipgloss-rendered border so that
+		// reflow never touches the APC escape bytes.
+		if imgBuf.Len() > 0 {
+			sb.WriteString(imgBuf.String())
+		}
 
 		lastUserID = post.UserID
 	}
@@ -406,6 +453,16 @@ func emojiChar(name string) string {
 		return ch
 	}
 	return ":" + name + ":"
+}
+
+// indentLines prepends prefix to every line in s.  Used to align image
+// placeholder rows with the text body inside the message left-border.
+func indentLines(s, prefix string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = prefix + l
+	}
+	return strings.Join(lines, "\n")
 }
 
 // networkZoneBadge returns a small coloured badge indicating whether a file is

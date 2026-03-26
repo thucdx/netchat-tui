@@ -31,6 +31,19 @@ func (c *Client) DownloadFileThumbnail(fileID string) ([]byte, error) {
 	return data, nil
 }
 
+// DownloadFilePreview returns the raw bytes of the preview image for a file.
+// Mattermost generates a preview at up to the original resolution (larger than
+// the 128×128 thumbnail).  Returns an error if no preview exists (e.g. for
+// non-image files or formats Mattermost can't preview).
+func (c *Client) DownloadFilePreview(fileID string) ([]byte, error) {
+	path := "/api/v4/files/" + url.PathEscape(fileID) + "/preview"
+	data, err := c.Get(path)
+	if err != nil {
+		return nil, fmt.Errorf("DownloadFilePreview: %w", err)
+	}
+	return data, nil
+}
+
 // DownloadFile returns the raw bytes of the full file.
 func (c *Client) DownloadFile(fileID string) ([]byte, error) {
 	path := "/api/v4/files/" + url.PathEscape(fileID)

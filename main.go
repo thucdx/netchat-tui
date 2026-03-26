@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -11,6 +13,31 @@ import (
 	"github.com/thucdx/netchat-tui/config"
 	"github.com/thucdx/netchat-tui/tui"
 )
+
+// setupLogging redirects the standard logger to a file inside the netchat-tui
+// config directory (~/.config/netchat-tui/netchat.log).  The caller must defer
+// the returned closer.  On any error the logger is left pointing at os.Stderr.
+func setupLogging() (close func()) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot determine config dir for log file: %v\n", err)
+		return func() {}
+	}
+	logDir := filepath.Join(dir, "netchat-tui")
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot create log dir %s: %v\n", logDir, err)
+		return func() {}
+	}
+	logPath := filepath.Join(logDir, "netchat.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot open log file %s: %v\n", logPath, err)
+		return func() {}
+	}
+	log.SetOutput(f)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	return func() { f.Close() }
+}
 
 // setupTmux configures the current tmux window for reliable title updates.
 // It disables automatic-rename (which would fight our custom title) and returns:
@@ -59,6 +86,9 @@ func (w authWrapper) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (w authWrapper) View() string { return w.inner.View() }
 
 func main() {
+	closeLog := setupLogging()
+	defer closeLog()
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: failed to load config: %v\n", err)
